@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Psicología Ocupacional | Directorio de Pacientes</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="css/common.css" rel="stylesheet"/>
+<script src="js/tailwind-config.js"></script>
+<script src="js/auth-guard.js" type="module"></script>
+</head>
+<body class="bg-background text-on-surface min-h-screen flex">
+<!-- Navegación lateral (ver js/sidebar.js) -->
+<div data-active="pacientes" id="sidebar-root"></div>
+<!-- Main Content Canvas -->
+<main class="lg:ml-[240px] w-full lg:w-[calc(100%-240px)] flex flex-col min-h-screen">
+<!-- TopAppBar -->
+<header class="flex justify-between items-center h-16 pl-16 lg:pl-margin-desktop pr-margin-mobile lg:pr-margin-desktop bg-surface sticky top-0 z-40 border-b border-outline-variant">
+<div class="flex items-center gap-4 min-w-0">
+<h2 class="font-headline-md text-headline-md font-bold text-primary truncate">Directorio de Pacientes</h2>
+</div>
+</header>
+<!-- Dynamic Content -->
+<section class="p-margin-mobile lg:p-margin-desktop space-y-6">
+<!-- Buscador y filtros -->
+<div class="flex flex-col sm:flex-row gap-3">
+<div class="relative flex-1">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant">search</span>
+<input class="w-full pl-11 pr-4 py-2.5 bg-surface-container-lowest border border-outline-variant rounded-lg focus:outline-none focus:ring-2 focus:ring-secondary focus:border-transparent text-body-md" id="search-input" placeholder="Buscar por DNI o nombre..." type="text"/>
+</div>
+<select class="w-full sm:w-64 px-4 py-2.5 bg-surface-container-lowest border border-outline-variant rounded-lg focus:outline-none focus:ring-2 focus:ring-secondary focus:border-transparent text-body-md" id="area-filter">
+<option value="">Todas las áreas</option>
+</select>
+</div>
+<!-- Resumen -->
+<div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+<div class="bg-surface-container-lowest p-5 rounded-xl border border-outline-variant shadow-sm flex items-center justify-between">
+<div>
+<p class="text-on-surface-variant font-label-md uppercase tracking-widest">Pacientes Registrados</p>
+<h3 class="font-headline-lg text-primary" id="stat-pacientes">—</h3>
+</div>
+<div class="w-12 h-12 rounded-full bg-secondary-fixed flex items-center justify-center text-on-secondary-fixed-variant">
+<span class="material-symbols-outlined">groups</span>
+</div>
+</div>
+<div class="bg-surface-container-lowest p-5 rounded-xl border border-outline-variant shadow-sm flex items-center justify-between">
+<div>
+<p class="text-on-surface-variant font-label-md uppercase tracking-widest">En Atención</p>
+<h3 class="font-headline-lg text-primary" id="stat-en-atencion">—</h3>
+</div>
+<div class="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center text-green-700">
+<span class="material-symbols-outlined">medical_services</span>
+</div>
+</div>
+<div class="bg-surface-container-lowest p-5 rounded-xl border border-outline-variant shadow-sm flex items-center justify-between">
+<div>
+<p class="text-on-surface-variant font-label-md uppercase tracking-widest">Casos de Riesgo</p>
+<h3 class="font-headline-lg text-primary" id="stat-riesgo">—</h3>
+</div>
+<div class="w-12 h-12 rounded-full bg-error-container flex items-center justify-center text-error">
+<span class="material-symbols-outlined">report_problem</span>
+</div>
+</div>
+</div>
+<!-- Lista de pacientes -->
+<div class="grid grid-cols-1 gap-4" id="patients-list">
+<p class="text-body-md text-on-surface-variant p-4">Cargando pacientes…</p>
+</div>
+</section>
+</main>
+<script src="js/sidebar.js" type="module"></script>
+<script src="js/pacientes.js" type="module"></script>
+</body>
+</html>

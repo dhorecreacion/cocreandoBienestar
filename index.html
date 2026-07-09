@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Psicología Ocupacional - Reserva tu Cita</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="css/common.css" rel="stylesheet"/>
+<script src="js/tailwind-config.js"></script>
+</head>
+<body class="bg-surface text-on-surface font-body-md antialiased min-h-screen flex flex-col">
+<!-- Header -->
+<header class="w-full bg-surface-container-lowest border-b border-outline-variant py-4 px-margin-desktop sticky top-0 z-50">
+<div class="max-w-container-max mx-auto flex justify-between items-center">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined fill text-secondary text-3xl">psychology</span>
+<span class="font-headline-md text-headline-md text-primary tracking-tight">Psicología Ocupacional</span>
+</div>
+<button class="hidden md:flex items-center gap-4 hover:opacity-75 transition-opacity" id="admin-login-trigger" type="button">
+<span class="font-body-md text-body-md text-on-surface-variant">Panel administrador</span>
+<span class="material-symbols-outlined text-outline">badge</span>
+</button>
+</div>
+</header>
+<!-- Main Content -->
+<main class="flex-grow w-full max-w-container-max mx-auto px-margin-desktop py-12">
+<!-- ===================== FLUJO DE RESERVA (3 pasos) ===================== -->
+<div id="booking-flow">
+<div class="mb-10 max-w-2xl">
+<h1 class="font-headline-lg text-headline-lg text-primary mb-2">Reserva tu Cita de Atención</h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant">Selecciona la fecha y hora que mejor se adapte a tu horario, y completa tus datos para confirmar la reserva.</p>
+</div>
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+<!-- Left Column: Date & Time Selection -->
+<div class="lg:col-span-7 flex flex-col gap-8">
+<!-- Step 1: Date Selection (calendario del mes completo) -->
+<section class="bg-surface-container-lowest rounded-xl border border-outline-variant p-6 shadow-sm">
+<div class="flex items-center justify-between mb-6">
+<h2 class="font-headline-md text-headline-md text-primary flex items-center gap-2">
+<span class="material-symbols-outlined text-secondary">calendar_month</span>
+                            Paso 1: Selecciona una Fecha
+                        </h2>
+<div class="flex items-center gap-3">
+<span class="font-body-md text-body-md text-primary font-semibold capitalize" id="calendar-month-label">—</span>
+<div class="flex gap-2">
+<button class="p-2 rounded-full hover:bg-surface-container-low text-on-surface-variant transition-colors border border-outline-variant" id="calendar-prev-month" type="button">
+<span class="material-symbols-outlined">chevron_left</span>
+</button>
+<button class="p-2 rounded-full hover:bg-surface-container-low text-on-surface-variant transition-colors border border-outline-variant" id="calendar-next-month" type="button">
+<span class="material-symbols-outlined">chevron_right</span>
+</button>
+</div>
+</div>
+</div>
+<p class="font-label-md text-label-md text-on-surface-variant mb-4">Solo puedes elegir los días en que el psicólogo atiende.</p>
+<div class="grid grid-cols-7 gap-1 mb-2 text-center">
+<span class="font-label-md text-label-md text-on-surface-variant uppercase">Lun</span>
+<span class="font-label-md text-label-md text-on-surface-variant uppercase">Mar</span>
+<span class="font-label-md text-label-md text-on-surface-variant uppercase">Mié</span>
+<span class="font-label-md text-label-md text-on-surface-variant uppercase">Jue</span>
+<span class="font-label-md text-label-md text-on-surface-variant uppercase">Vie</span>
+<span class="font-label-md text-label-md text-on-surface-variant uppercase">Sáb</span>
+<span class="font-label-md text-label-md text-on-surface-variant uppercase">Dom</span>
+</div>
+<div class="grid grid-cols-7 gap-1" id="calendar-days-grid">
+<p class="col-span-full text-center text-body-md text-on-surface-variant py-6">Cargando calendario…</p>
+</div>
+</section>
+<!-- Step 2: Time Selection (horas generadas desde Mi Disponibilidad) -->
+<section class="bg-surface-container-lowest rounded-xl border border-outline-variant p-6 shadow-sm">
+<div class="mb-6">
+<h2 class="font-headline-md text-headline-md text-primary flex items-center gap-2 mb-2">
+<span class="material-symbols-outlined text-secondary">schedule</span>
+                            Paso 2: Elige una Hora
+                        </h2>
+<p class="font-body-md text-body-md text-on-surface-variant" id="date-summary">Primero selecciona una fecha en el Paso 1.</p>
+</div>
+<div class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3" id="time-options">
+<p class="col-span-full text-body-md text-on-surface-variant p-4">Selecciona una fecha para ver los horarios disponibles.</p>
+</div>
+<div class="mt-6 flex items-center gap-6 pt-4 border-t border-outline-variant/50">
+<div class="flex items-center gap-2">
+<div class="w-3 h-3 rounded-full bg-[#10b981]"></div>
+<span class="font-label-md text-label-md text-on-surface-variant">Disponible</span>
+</div>
+<div class="flex items-center gap-2">
+<div class="w-3 h-3 rounded-full bg-secondary"></div>
+<span class="font-label-md text-label-md text-on-surface-variant">Seleccionada</span>
+</div>
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px] text-outline">lock</span>
+<span class="font-label-md text-label-md text-on-surface-variant">Ocupada</span>
+</div>
+</div>
+</section>
+</div>
+<!-- Right Column: Patient Form -->
+<div class="lg:col-span-5 sticky top-24">
+<form class="bg-surface-container-lowest rounded-xl border border-outline-variant p-6 shadow-[0px_4px_12px_rgba(30,41,59,0.05)]" id="booking-form">
+<div class="mb-6 border-b border-outline-variant pb-4">
+<h2 class="font-headline-md text-headline-md text-primary flex items-center gap-2 mb-1">
+<span class="material-symbols-outlined text-secondary">person_add</span>
+                            Paso 3: Tu DNI
+                        </h2>
+<p class="font-body-md text-body-md text-on-surface-variant" id="booking-summary">Resumen: selecciona fecha y hora</p>
+</div>
+<!-- Registro inicial: solo el DNI. El resto de tus datos se completa más adelante. -->
+<div class="mb-8">
+<label class="block font-label-md text-label-md text-on-surface mb-2" for="dni">DNI <span class="text-error">*</span></label>
+<div class="relative">
+<div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+<span class="material-symbols-outlined text-outline">badge</span>
+</div>
+<input class="w-full pl-10 pr-4 py-3 bg-surface-container-lowest border border-outline-variant rounded-lg focus:outline-none focus:ring-2 focus:ring-secondary focus:border-transparent font-body-md text-body-md text-on-surface transition-shadow" id="dni" placeholder="12345678" type="text"/>
+</div>
+</div>
+<!-- CTA -->
+<button class="w-full py-4 bg-primary text-on-primary font-headline-md text-headline-md rounded-lg hover:bg-primary-fixed-variant transition-colors flex items-center justify-center gap-2 shadow-[0px_4px_12px_rgba(30,41,59,0.15)]" id="confirm-btn" type="button">
+                        Registrar
+                        <span class="material-symbols-outlined">arrow_forward</span>
+</button>
+<p class="text-center font-label-md text-label-md text-on-surface-variant mt-4 flex items-center justify-center gap-1">
+<span class="material-symbols-outlined text-[14px]">lock</span>
+                        Conexión segura y confidencial
+                    </p>
+</form>
+</div>
+</div>
+</div>
+<!-- ===================== PANTALLA DE CONFIRMACIÓN ===================== -->
+<div class="hidden max-w-xl mx-auto text-center py-12" id="confirmation-screen">
+<span class="material-symbols-outlined text-[#10b981] text-6xl" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+<h1 class="font-headline-lg text-headline-lg text-primary mt-4 mb-2">¡Tu DNI quedó registrado!</h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant mb-8">Con este número seguiremos completando tu cita.</p>
+<div class="bg-surface-container-lowest rounded-xl border border-outline-variant p-6 text-left space-y-3 mb-8">
+<div class="flex justify-between">
+<span class="font-label-md text-label-md text-on-surface-variant">DNI</span>
+<span class="font-body-md text-body-md font-semibold text-primary" id="summary-dni">—</span>
+</div>
+<div class="flex justify-between">
+<span class="font-label-md text-label-md text-on-surface-variant">Fecha y hora seleccionada</span>
+<span class="font-body-md text-body-md font-semibold text-primary" id="summary-datetime">Mar 13 Oct, 10:30</span>
+</div>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant mb-2 flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-[18px] text-secondary">chat</span>
+                Pronto recibirás un recordatorio por WhatsApp o correo para completar el resto de tus datos.
+            </p>
+<button class="mt-6 py-3 px-6 bg-primary text-on-primary font-headline-md text-headline-md rounded-lg hover:bg-primary-fixed-variant transition-colors inline-flex items-center justify-center gap-2" id="back-to-booking-btn" type="button">
+<span class="material-symbols-outlined">arrow_back</span>
+                Volver a la reserva
+            </button>
+</div>
+</main>
+<!-- ===================== MODAL: Acceso del personal ===================== -->
+<div class="hidden fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4" id="admin-login-modal">
+<div class="bg-surface-container-lowest rounded-xl border border-outline-variant p-6 w-full max-w-sm shadow-xl">
+<div class="flex items-center justify-between mb-4">
+<h2 class="font-headline-md text-headline-md text-primary">Acceso del personal</h2>
+<button class="p-1 rounded-full hover:bg-surface-container-low text-on-surface-variant" id="admin-login-close" type="button">
+<span class="material-symbols-outlined">close</span>
+</button>
+</div>
+<div class="space-y-4">
+<div>
+<label class="block font-label-md text-label-md text-on-surface mb-1" for="admin-email">Correo</label>
+<input class="w-full px-4 py-2.5 bg-surface-container-lowest border border-outline-variant rounded-lg focus:outline-none focus:ring-2 focus:ring-secondary focus:border-transparent font-body-md text-body-md text-on-surface" id="admin-email" placeholder="tu@correo.com" type="email"/>
+</div>
+<div>
+<label class="block font-label-md text-label-md text-on-surface mb-1" for="admin-password">Contraseña</label>
+<input class="w-full px-4 py-2.5 bg-surface-container-lowest border border-outline-variant rounded-lg focus:outline-none focus:ring-2 focus:ring-secondary focus:border-transparent font-body-md text-body-md text-on-surface" id="admin-password" placeholder="••••••••" type="password"/>
+</div>
+<p class="hidden font-label-md text-label-md text-error" id="admin-login-error"></p>
+<button class="w-full py-3 bg-primary text-on-primary font-headline-md text-headline-md rounded-lg hover:bg-primary-fixed-variant transition-colors" id="admin-login-submit" type="button">
+                        Ingresar
+                    </button>
+</div>
+</div>
+</div>
+<!-- Simple Footer -->
+<footer class="w-full bg-surface-container-low py-6 border-t border-outline-variant mt-auto">
+<div class="max-w-container-max mx-auto px-margin-desktop text-center">
+<p class="font-label-md text-label-md text-outline">
+              
+      &copy; 2026 Calidad de Vida &mdash;
+      Direcci&oacute;n de Desarrollo Humano y Organizacional.
+      Todos los derechos reservados.
+   
+            </p>
+</div>
+</footer>
+<script src="js/index.js" type="module"></script>
+</body>
+</html>

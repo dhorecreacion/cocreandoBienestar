@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html class="light" lang="es">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Psicología Ocupacional | Tablero de Indicadores</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="css/common.css" rel="stylesheet"/>
+<script src="js/tailwind-config.js"></script>
+<script src="js/auth-guard.js" type="module"></script>
+</head>
+<body class="bg-background text-on-background min-h-screen">
+<!-- Navegación lateral (ver js/sidebar.js) -->
+<div data-active="indicadores" id="sidebar-root"></div>
+<!-- TopAppBar -->
+<header class="fixed top-0 right-0 left-0 lg:left-[240px] h-16 flex justify-between items-center pl-16 lg:pl-margin-desktop pr-margin-mobile lg:pr-margin-desktop bg-surface dark:bg-surface-container-lowest border-b border-outline-variant dark:border-outline z-40">
+<div class="flex items-center gap-4 min-w-0">
+<h2 class="hidden sm:block font-headline-md text-headline-md font-bold text-primary truncate">Tablero de Indicadores</h2>
+<div class="flex bg-surface-container-low rounded-full p-1 sm:ml-4 border border-outline-variant/30">
+<button class="px-4 py-1.5 rounded-full text-label-md font-semibold transition-all bg-secondary text-on-secondary shadow-sm" id="viewPsych" type="button">Psicólogo (V8)</button>
+<button class="px-4 py-1.5 rounded-full text-label-md font-semibold transition-all text-on-surface-variant hover:bg-surface-container-high" id="viewHR" type="button">Ejecutivo RRHH (V10)</button>
+</div>
+</div>
+
+</header>
+<!-- Main Content -->
+<main class="lg:ml-[240px] pt-24 pb-12 px-margin-mobile lg:px-margin-desktop">
+<!-- Dashboard Header Actions -->
+<div class="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-4 mb-8">
+<div>
+<p class="font-label-md text-label-md text-on-surface-variant mb-1" id="viewSubtitle">Resumen Operativo Mensual</p>
+<h3 class="font-headline-lg text-headline-lg text-primary" id="viewTitle">Desempeño Operativo</h3>
+</div>
+<div class="flex gap-3">
+<span class="flex items-center gap-2 px-5 py-2.5 rounded-lg border border-outline-variant bg-white text-body-md font-semibold text-primary" id="periodo-label">
+<span class="material-symbols-outlined text-[20px]">calendar_month</span>
+                    —
+                </span>
+<button class="flex items-center gap-2 px-6 py-2.5 rounded-lg bg-secondary text-on-secondary text-body-md font-semibold hover:opacity-90 transition-all shadow-sm" id="export-btn" type="button">
+<span class="material-symbols-outlined text-[20px]">download</span>
+                    Exportar Reporte
+                </button>
+</div>
+</div>
+<!-- Metric Grid -->
+<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-gutter mb-gutter">
+<!-- Metric 1: Atenciones del Mes (sesiones realizadas) -->
+<div class="glass-card p-6 rounded-xl transition-all hover:-translate-y-1">
+<div class="flex justify-between items-start mb-4">
+<div class="p-2 rounded-lg bg-secondary/10 text-secondary">
+<span class="material-symbols-outlined">event_available</span>
+</div>
+<span class="text-xs font-bold text-primary/40 bg-surface-container-high px-2 py-1 rounded">Sesiones</span>
+</div>
+<p class="text-on-surface-variant font-label-md">Atenciones del Mes</p>
+<h4 class="text-3xl font-bold text-primary mt-1" id="kpi-atenciones-mes">—</h4>
+</div>
+<!-- Metric 2: % Cumplimiento de Meta (la meta mensual aún no se configura) -->
+<div class="glass-card p-6 rounded-xl transition-all hover:-translate-y-1 border-l-4 border-secondary">
+<div class="flex justify-between items-start mb-4">
+<div class="p-2 rounded-lg bg-secondary/10 text-secondary">
+<span class="material-symbols-outlined">task_alt</span>
+</div>
+<span class="text-xs font-bold text-primary/40 bg-surface-container-high px-2 py-1 rounded" id="kpi-meta-chip">Meta no definida</span>
+</div>
+<p class="text-on-surface-variant font-label-md">% Cumplimiento de Meta</p>
+<h4 class="text-3xl font-bold text-primary mt-1" id="kpi-meta">—</h4>
+</div>
+<!-- Metric 3: % Participación (histórico: % de la planilla alguna vez atendido) -->
+<div class="glass-card p-6 rounded-xl transition-all hover:-translate-y-1">
+<div class="flex justify-between items-start mb-4">
+<div class="p-2 rounded-lg bg-secondary/10 text-secondary">
+<span class="material-symbols-outlined">groups</span>
+</div>
+<span class="text-xs font-bold text-primary/40 bg-surface-container-high px-2 py-1 rounded">Histórico</span>
+</div>
+<p class="text-on-surface-variant font-label-md">% Participación</p>
+<h4 class="text-3xl font-bold text-primary mt-1" id="kpi-participacion">—</h4>
+</div>
+<!-- Metric 4: Atendidos del Mes (antes "% Inasistencias"; renombrada para no
+     confundirse con % Participación: esta cuenta PERSONAS únicas del mes) -->
+<div class="glass-card p-6 rounded-xl transition-all hover:-translate-y-1">
+<div class="flex justify-between items-start mb-4">
+<div class="p-2 rounded-lg bg-secondary/10 text-secondary">
+<span class="material-symbols-outlined">how_to_reg</span>
+</div>
+<span class="text-xs font-bold text-primary/40 bg-surface-container-high px-2 py-1 rounded">Personas únicas</span>
+</div>
+<p class="text-on-surface-variant font-label-md">Atendidos del Mes</p>
+<h4 class="text-3xl font-bold text-primary mt-1" id="kpi-atendidos-mes">—</h4>
+</div>
+<!-- Metric 5: Casos Activos -->
+<div class="glass-card p-6 rounded-xl transition-all hover:-translate-y-1">
+<div class="flex justify-between items-start mb-4">
+<div class="p-2 rounded-lg bg-secondary/10 text-secondary">
+<span class="material-symbols-outlined">folder_open</span>
+</div>
+<span class="text-xs font-bold text-primary/40 bg-surface-container-high px-2 py-1 rounded">En curso</span>
+</div>
+<p class="text-on-surface-variant font-label-md">Casos Activos</p>
+<h4 class="text-3xl font-bold text-primary mt-1" id="kpi-casos-activos">—</h4>
+</div>
+<!-- Metric 6: Casos de Riesgo -->
+<div class="glass-card p-6 rounded-xl transition-all hover:-translate-y-1 bg-red-50/50 border-red-100" id="riskCasesCard">
+<div class="flex justify-between items-start mb-4">
+<div class="p-2 rounded-lg bg-red-100 text-error">
+<span class="material-symbols-outlined">report_problem</span>
+</div>
+<span class="text-xs font-bold text-error bg-white px-2 py-1 rounded shadow-sm">Alta Prioridad</span>
+</div>
+<p class="text-on-surface-variant font-label-md" id="riskLabel">Casos de Riesgo</p>
+<h4 class="text-3xl font-bold text-primary mt-1" id="riskValue">—</h4>
+</div>
+</div>
+<!-- Charts Grid -->
+<div class="grid grid-cols-12 gap-gutter">
+<!-- Main Chart: Evaluados por Mes -->
+<div class="col-span-12 lg:col-span-8 glass-card p-6 sm:p-8 rounded-xl">
+<div class="flex justify-between items-center mb-8">
+<h5 class="font-headline-md text-headline-md text-primary">Evaluados por Mes (<span id="chart-anio">—</span>)</h5>
+<span class="flex items-center gap-1.5 text-xs text-on-surface-variant font-medium">
+<span class="w-3 h-3 rounded-full bg-secondary"></span> Personas atendidas
+                    </span>
+</div>
+<div class="relative h-64 w-full flex items-end justify-between gap-1 px-2" id="chart-mensual">
+<p class="text-body-md text-on-surface-variant m-auto">Cargando…</p>
+</div>
+</div>
+<!-- Atenciones por Área -->
+<div class="col-span-12 lg:col-span-4 glass-card p-6 sm:p-8 rounded-xl flex flex-col">
+<h5 class="font-headline-md text-headline-md text-primary mb-6">Atenciones por Área</h5>
+<div class="space-y-6 flex-1" id="chart-areas">
+<p class="text-body-md text-on-surface-variant">Cargando…</p>
+</div>
+</div>
+<!-- Distribución de Prioridades -->
+<div class="col-span-12 lg:col-span-6 glass-card p-6 sm:p-8 rounded-xl">
+<h5 class="font-headline-md text-headline-md text-primary mb-8">Distribución de Prioridades</h5>
+<div class="flex flex-col sm:flex-row items-center gap-8 sm:gap-12">
+<div class="relative w-40 h-40 rounded-full flex-shrink-0 flex items-center justify-center" id="chart-prioridades-donut">
+<div class="w-[108px] h-[108px] rounded-full bg-surface-container-lowest flex items-center justify-center">
+<div class="text-center">
+<span class="text-2xl font-bold text-primary" id="donut-center-value">—</span>
+<p class="text-[10px] text-on-surface-variant uppercase font-bold" id="donut-center-label">—</p>
+</div>
+</div>
+</div>
+<div class="flex-1 w-full space-y-4" id="chart-prioridades-legend">
+<p class="text-body-md text-on-surface-variant">Cargando…</p>
+</div>
+</div>
+</div>
+<!-- Dynamic Section: Diagnósticos (V8) vs Casos Urgentes por Área (V10) -->
+<div class="col-span-12 lg:col-span-6 glass-card p-6 sm:p-8 rounded-xl">
+<div class="mb-8">
+<h5 class="font-headline-md text-headline-md text-primary" id="dynamicTitle">Diagnósticos Más Frecuentes</h5>
+</div>
+<!-- Contenido Psicólogo (V8): incluye diagnósticos -->
+<div class="space-y-4" id="psychContent">
+<p class="text-body-md text-on-surface-variant">Cargando…</p>
+</div>
+<!-- Contenido RRHH (V10): solo conteos por área, sin nombres ni diagnósticos -->
+<div class="hidden space-y-3" id="hrContent">
+<p class="text-body-md text-on-surface-variant">Cargando…</p>
+</div>
+</div>
+<!-- Modalidades de Atención: aún sin datos reales -->
+<div class="col-span-12 lg:col-span-4 glass-card p-6 sm:p-8 rounded-xl">
+<h5 class="font-headline-md text-headline-md text-primary mb-6">Modalidades de Atención</h5>
+<div class="flex flex-col items-center justify-center text-center gap-2 py-8">
+<span class="material-symbols-outlined text-4xl text-outline">pending_actions</span>
+<p class="text-body-md text-on-surface-variant">La modalidad (presencial / video / llamada) todavía no se registra al reservar ni al atender, así que aún no hay datos para este gráfico.</p>
+</div>
+</div>
+<!-- Edad y Género -->
+<div class="col-span-12 lg:col-span-4 glass-card p-6 sm:p-8 rounded-xl">
+<h5 class="font-headline-md text-headline-md text-primary mb-6">Edad y Género</h5>
+<p class="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-3">Rango Etario</p>
+<div class="space-y-3 mb-6" id="chart-edades">
+<p class="text-body-md text-on-surface-variant">Cargando…</p>
+</div>
+<p class="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-3">Género</p>
+<div class="flex flex-wrap items-center gap-4 text-body-md font-medium" id="chart-genero">
+<p class="text-body-md text-on-surface-variant">Cargando…</p>
+</div>
+</div>
+<!-- Derivaciones -->
+<div class="col-span-12 lg:col-span-4 glass-card p-6 sm:p-8 rounded-xl">
+<h5 class="font-headline-md text-headline-md text-primary mb-6">Derivaciones</h5>
+<div class="space-y-6" id="chart-derivaciones">
+<p class="text-body-md text-on-surface-variant">Cargando…</p>
+</div>
+</div>
+</div>
+</main>
+<script src="js/sidebar.js" type="module"></script>
+<script src="js/indicadores.js" type="module"></script>
+</body>
+</html>

@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Psicología Ocupacional | Agenda del Psicólogo</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="css/common.css" rel="stylesheet"/>
+<script src="js/tailwind-config.js"></script>
+<script src="js/auth-guard.js" type="module"></script>
+</head>
+<body class="bg-background text-on-surface min-h-screen flex">
+<!-- Navegación lateral (ver js/sidebar.js) -->
+<div data-active="agenda" id="sidebar-root"></div>
+<!-- Main Content Canvas -->
+<main class="lg:ml-[240px] w-full lg:w-[calc(100%-240px)] flex flex-col min-h-screen">
+<!-- TopAppBar -->
+<header class="flex justify-between items-center h-16 pl-16 lg:pl-margin-desktop pr-margin-mobile lg:pr-margin-desktop bg-surface sticky top-0 z-40 border-b border-outline-variant">
+<div class="flex items-center gap-4 min-w-0">
+<h2 class="font-headline-md text-headline-md font-bold text-primary truncate">Agenda del Día</h2>
+<div class="hidden sm:block h-6 w-px bg-outline-variant"></div>
+<span class="hidden sm:inline text-on-surface-variant font-body-md capitalize" id="header-fecha">—</span>
+</div>
+
+</header>
+<!-- Dynamic Content -->
+<section class="p-margin-mobile lg:p-margin-desktop space-y-6">
+<!-- Risk Case Alert (oculto hasta que se encuentre un caso sin revisar) -->
+<div class="hidden bg-error-container border-l-4 border-error p-4 rounded-xl flex items-center justify-between risk-glow shadow-sm" id="risk-alert-banner">
+<div class="flex items-center gap-4 text-on-error-container">
+<span class="material-symbols-outlined text-[28px]" style="font-variation-settings: 'FILL' 1;">warning</span>
+<div>
+<p class="font-headline-md text-on-error-container" id="risk-alert-title">Alerta de Riesgo Crítico</p>
+<p class="text-body-md opacity-90" id="risk-alert-description">Se detectaron señales de riesgo en la última sesión. Se sugiere protocolo de intervención en crisis.</p>
+</div>
+</div>
+<button class="bg-error text-on-error px-6 py-2 rounded-lg font-semibold hover:bg-error/90 transition-colors" id="risk-alert-review-btn" type="button">
+                    Revisar Caso
+                </button>
+</div>
+<!-- Dashboard Stats Summary (conteos reales por estado de la cita) -->
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 lg:gap-6">
+<div class="bg-surface-container-lowest p-5 rounded-xl border border-outline-variant shadow-sm flex items-center justify-between">
+<div>
+<p class="text-on-surface-variant font-label-md uppercase tracking-widest">Citas Totales</p>
+<h3 class="font-headline-lg text-primary" id="stat-total">—</h3>
+</div>
+<div class="w-12 h-12 rounded-full bg-secondary-fixed flex items-center justify-center text-on-secondary-fixed-variant">
+<span class="material-symbols-outlined">calendar_month</span>
+</div>
+</div>
+<div class="bg-surface-container-lowest p-5 rounded-xl border border-outline-variant shadow-sm flex items-center justify-between">
+<div>
+<p class="text-on-surface-variant font-label-md uppercase tracking-widest">Pendientes</p>
+<h3 class="font-headline-lg text-primary" id="stat-pendientes">—</h3>
+<p class="hidden text-[10px] text-yellow-700 font-semibold" id="stat-pendientes-detalle"></p>
+</div>
+<div class="w-12 h-12 rounded-full bg-secondary/10 flex items-center justify-center text-secondary">
+<span class="material-symbols-outlined">schedule</span>
+</div>
+</div>
+<div class="bg-surface-container-lowest p-5 rounded-xl border border-outline-variant shadow-sm flex items-center justify-between">
+<div>
+<p class="text-on-surface-variant font-label-md uppercase tracking-widest">Atendidas</p>
+<h3 class="font-headline-lg text-primary" id="stat-atendidas">—</h3>
+</div>
+<div class="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center text-green-700">
+<span class="material-symbols-outlined">check_circle</span>
+</div>
+</div>
+<div class="bg-surface-container-lowest p-5 rounded-xl border border-outline-variant shadow-sm flex items-center justify-between">
+<div>
+<p class="text-on-surface-variant font-label-md uppercase tracking-widest">Inasistencias</p>
+<h3 class="font-headline-lg text-primary" id="stat-inasistencias">—</h3>
+</div>
+<div class="w-12 h-12 rounded-full bg-error-container flex items-center justify-center text-error">
+<span class="material-symbols-outlined">person_off</span>
+</div>
+</div>
+</div>
+<!-- Daily Schedule Grid -->
+<div class="space-y-4">
+<div class="flex items-center justify-between mb-2">
+<h3 class="font-headline-md text-primary">Línea de Tiempo</h3>
+<div class="flex gap-2">
+<button class="px-4 py-1.5 rounded-full bg-secondary text-on-secondary text-label-md font-semibold" id="filter-hoy" type="button">Hoy</button>
+<button class="px-4 py-1.5 rounded-full bg-surface-container-high text-on-surface-variant text-label-md" id="filter-todas" type="button">Todas</button>
+</div>
+</div>
+<div class="grid grid-cols-1 gap-4" id="appointments-list">
+<p class="text-body-md text-on-surface-variant p-4">Cargando citas…</p>
+</div>
+</div>
+</section>
+<!-- Floating Action Button (FAB): Nueva cita (abre la página pública de reserva) -->
+<button class="fixed bottom-8 right-8 w-14 h-14 bg-primary text-on-primary rounded-full shadow-lg flex items-center justify-center hover:scale-105 active:scale-95 transition-all z-50" id="fab-nueva-cita" title="Nueva cita" type="button">
+<span class="material-symbols-outlined text-[32px]">add</span>
+</button>
+</main>
+<!-- ===================== MODAL: Reprogramar cita ===================== -->
+<div class="hidden fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4" id="reprogramar-modal">
+<div class="bg-surface-container-lowest rounded-xl border border-outline-variant p-6 w-full max-w-sm shadow-xl">
+<div class="flex items-center justify-between mb-1">
+<h2 class="font-headline-md text-headline-md text-primary">Reprogramar cita</h2>
+<button class="p-1 rounded-full hover:bg-surface-container-low text-on-surface-variant" id="reprogramar-close" type="button">
+<span class="material-symbols-outlined">close</span>
+</button>
+</div>
+<p class="text-body-md text-on-surface-variant mb-4" id="reprogramar-paciente">—</p>
+<div class="space-y-4">
+<div>
+<label class="block font-label-md text-label-md text-on-surface mb-1" for="reprogramar-fecha">Nueva fecha</label>
+<input class="w-full px-3 py-2.5 bg-surface-container-lowest border border-outline-variant rounded-lg focus:outline-none focus:ring-2 focus:ring-secondary text-body-md" id="reprogramar-fecha" type="date"/>
+</div>
+<div>
+<label class="block font-label-md text-label-md text-on-surface mb-2">Nueva hora</label>
+<div class="grid grid-cols-3 gap-2 max-h-44 overflow-y-auto custom-scrollbar" id="reprogramar-horas">
+<p class="col-span-full text-body-md text-on-surface-variant">Elige primero una fecha.</p>
+</div>
+</div>
+<p class="hidden font-label-md text-label-md text-error" id="reprogramar-error"></p>
+<button class="w-full py-2.5 rounded-lg bg-primary text-on-primary font-semibold hover:opacity-90 transition-all" id="reprogramar-guardar" type="button">Guardar cambio</button>
+</div>
+</div>
+</div>
+<script src="js/sidebar.js" type="module"></script>
+<script src="js/agenda.js" type="module"></script>
+</body>
+</html>
