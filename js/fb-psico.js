@@ -25,3 +25,12 @@ export const dbPsico = getFirestore(app);
 export const PACIENTES_COLLECTION = "pacientes";
 export const DISPONIBILIDAD_COLLECTION = "disponibilidad";
 export const DIAS_SEMANA = ["lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo"];
+
+// Modalidades de atención (mismo vocabulario en disponibilidad, reserva,
+// agenda e indicadores). "emergencia" existe solo como bloqueo de agenda,
+// nunca como cita reservable.
+export const MODALIDADES = {
+  presencial: { label: "Presencial", icon: "domain" },
+  virtual: { label: "Video", icon: "videocam" },
+  llamada: { label: "Llamada telefónica", icon: "call" }
+};

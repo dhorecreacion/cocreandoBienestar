@@ -8,20 +8,18 @@
 //      % Participación sin descargar toda la planilla.
 // El toggle Psicólogo/RRHH es solo visual: en producción cada rol debería
 // entrar con su propia cuenta y las reglas del backend decidir qué recibe.
-import { dbPsico } from "./fb-psico.js";
+import { dbPsico, MODALIDADES } from "./fb-psico.js";
 import { auth, db } from "./firebase-config.js";
+import { fetchFichasPorDnis } from "./fichas-cache.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
   collection,
   collectionGroup,
   getDocs,
-  getCountFromServer,
-  query,
-  where
+  getCountFromServer
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const FICHAS_COLLECTION = "fichas";
-const FICHAS_IN_CHUNK = 10;
 
 const MESES_CORTOS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 const MESES_LARGOS = [
@@ -105,34 +103,6 @@ async function fetchSesiones() {
   return sesiones;
 }
 
-async function fetchFichasPorDnis(dnis) {
-  const fichas = new Map();
-  const chunks = [];
-  for (let i = 0; i < dnis.length; i += FICHAS_IN_CHUNK) {
-    chunks.push(dnis.slice(i, i + FICHAS_IN_CHUNK));
-  }
-
-  const snapshots = await Promise.all(
-    chunks.map((chunk) => getDocs(query(collection(db, FICHAS_COLLECTION), where("personal.doc", "in", chunk))))
-  );
-
-  snapshots.forEach((snap) => {
-    snap.forEach((d) => {
-      const data = d.data();
-      const personal = data.personal || {};
-      const laboral = data.laboral || {};
-      if (!personal.doc) return;
-      fichas.set(personal.doc, {
-        area: laboral.area || "",
-        genero: personal.genero || "",
-        nacimiento: personal.nacimiento || ""
-      });
-    });
-  });
-
-  return fichas;
-}
-
 async function fetchTotalTrabajadores() {
   const snap = await getCountFromServer(collection(db, FICHAS_COLLECTION));
   return snap.data().count;
@@ -152,6 +122,7 @@ function calcularIndicadores(sesiones, fichas, totalTrabajadores) {
   const conteoAreas = new Map();
   const conteoDiagnosticos = new Map();
   const conteoDerivaciones = new Map();
+  const conteoModalidades = new Map();
 
   sesiones.forEach(({ dni, data }) => {
     dnisTotales.add(dni);
@@ -183,6 +154,9 @@ function calcularIndicadores(sesiones, fichas, totalTrabajadores) {
     if (data.derivacion) {
       conteoDerivaciones.set(data.derivacion, (conteoDerivaciones.get(data.derivacion) || 0) + 1);
     }
+
+    const modalidadKey = data.modalidad && MODALIDADES[data.modalidad] ? data.modalidad : "sin_registro";
+    conteoModalidades.set(modalidadKey, (conteoModalidades.get(modalidadKey) || 0) + 1);
   });
 
   // Casos: se clasifican por la ÚLTIMA sesión de cada paciente.
@@ -237,6 +211,7 @@ function calcularIndicadores(sesiones, fichas, totalTrabajadores) {
     conteoPrioridades: conteoPrioridades,
     conteoDiagnosticos: conteoDiagnosticos,
     conteoDerivaciones: conteoDerivaciones,
+    conteoModalidades: conteoModalidades,
     urgentesPorArea: urgentesPorArea,
     edades: edades,
     generos: generos,
@@ -455,6 +430,27 @@ function renderEdadesYGenero(ind) {
     });
 }
 
+function renderModalidades(ind) {
+  const contenedor = document.getElementById("chart-modalidades");
+  contenedor.innerHTML = "";
+
+  const total = Array.from(ind.conteoModalidades.values()).reduce((a, b) => a + b, 0);
+  if (total === 0) {
+    mensajeVacio(contenedor, "Aún no hay sesiones registradas.");
+    return;
+  }
+
+  const colores = { presencial: "bg-secondary", virtual: "bg-secondary/60", llamada: "bg-tertiary-fixed-dim", sin_registro: "bg-surface-container-highest" };
+
+  Array.from(ind.conteoModalidades.entries())
+    .sort((a, b) => b[1] - a[1])
+    .forEach(([clave, cuenta]) => {
+      const etiqueta = clave === "sin_registro" ? "Sin registro (citas antiguas)" : MODALIDADES[clave].label;
+      const pct = porcentaje(cuenta, total);
+      contenedor.appendChild(crearFilaBarra(etiqueta, pct + "%", pct, colores[clave] || "bg-secondary"));
+    });
+}
+
 function renderDerivaciones(ind) {
   const contenedor = document.getElementById("chart-derivaciones");
   contenedor.innerHTML = "";
@@ -541,6 +537,7 @@ async function inicializar() {
     renderDiagnosticos(indicadores);
     renderUrgentesPorArea(indicadores);
     renderEdadesYGenero(indicadores);
+    renderModalidades(indicadores);
     renderDerivaciones(indicadores);
   } catch (err) {
     console.error("Error al cargar los indicadores:", err);

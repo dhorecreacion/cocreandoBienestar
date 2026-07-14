@@ -68,10 +68,7 @@ function renderSidebar() {
       "</div>" +
       '<nav class="flex-1 space-y-1">' + links + "</nav>" +
       '<div class="mt-auto pt-4 border-t border-on-primary/10 space-y-1">' +
-        '<button type="button" class="w-full mb-4 flex items-center justify-center gap-2 bg-secondary text-on-secondary font-semibold py-2.5 rounded-xl hover:opacity-90 active:scale-95 transition-all">' +
-          '<span class="material-symbols-outlined text-[20px]">add</span>' +
-          '<span class="font-body-md">Nueva Cita??</span>' +
-        "</button>" +
+        
         '<a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg text-on-primary/70 hover:text-on-primary transition-colors" id="sidebar-logout-link">' +
           '<span class="material-symbols-outlined text-[20px]">logout</span>' +
           '<span class="font-body-md">Cerrar Sesión</span>' +

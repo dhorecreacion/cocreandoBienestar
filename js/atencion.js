@@ -3,15 +3,14 @@
 // (?dni=... desde agenda.html). Los datos personales/laborales salen de la
 // ficha social (proyecto de firebase-config.js, lectura autenticada); la
 // fecha/hora de la cita sale del registro público (proyecto de fb-psico.js).
-import { auth, db } from "./firebase-config.js";
+import { auth } from "./firebase-config.js";
+import { fetchFicha } from "./fichas-cache.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
   doc,
   getDoc,
   collection,
   query,
-  where,
-  limit,
   orderBy,
   getDocs,
   setDoc,
@@ -21,11 +20,6 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { dbPsico, PACIENTES_COLLECTION } from "./fb-psico.js";
 
-// El ID del documento en "fichas" es autogenerado (ej. "PZv4JYoc7zapsEncyYUQ"),
-// NO el DNI. El DNI vive en el campo personal.doc, así que hay que consultar
-// por ese campo en vez de leer directo por ID.
-const FICHAS_COLLECTION = "fichas";
-
 const patientInitials = document.getElementById("patient-initials");
 const patientName = document.getElementById("patient-name");
 const patientAge = document.getElementById("patient-age");
@@ -34,6 +28,9 @@ const patientCargo = document.getElementById("patient-cargo");
 const patientSede = document.getElementById("patient-sede");
 const patientSession = document.getElementById("patient-session");
 const patientDatetime = document.getElementById("patient-datetime");
+
+// Cita vigente del paciente (para copiar su modalidad a la sesión guardada).
+let citaActual = null;
 
 function getInitials(fullName) {
   return fullName
@@ -58,25 +55,17 @@ function calcularEdad(fechaNacimiento) {
   return edad;
 }
 
-function renderFichaSocial(data) {
-  const personal = data.personal || {};
-  const laboral = data.laboral || {};
-  const nombreCompleto = [personal.nombres, personal.apellidos].filter(Boolean).join(" ") || "Sin nombre registrado";
+function renderFichaSocial(ficha) {
+  const nombreCompleto = ficha.nombre || "Sin nombre registrado";
 
   patientInitials.textContent = getInitials(nombreCompleto) || "—";
   patientName.textContent = nombreCompleto;
 
-  const edad = calcularEdad(personal.nacimiento);
+  const edad = calcularEdad(ficha.nacimiento);
   patientAge.textContent = edad !== null ? `${edad} años` : "—";
-  patientArea.textContent = laboral.area || "—";
-  patientCargo.textContent = laboral.cargo || "—";
-  patientSede.textContent = laboral.sede || "—";
-}
-
-async function fetchFichaSocial(dni) {
-  const fichasQuery = query(collection(db, FICHAS_COLLECTION), where("personal.doc", "==", dni), limit(1));
-  const snap = await getDocs(fichasQuery);
-  return snap.empty ? null : snap.docs[0].data();
+  patientArea.textContent = ficha.area || "—";
+  patientCargo.textContent = ficha.cargo || "—";
+  patientSede.textContent = ficha.sede || "—";
 }
 
 async function fetchCita(dni) {
@@ -196,8 +185,6 @@ function renderFormFromSesion(data) {
     if (aptitudInput) aptitudInput.checked = true;
   }
 
-  if (data.seguimiento) document.getElementById("seguimiento-select").value = data.seguimiento;
-  document.getElementById("restricciones-textarea").value = data.restricciones || "";
   if (data.derivacion) document.getElementById("derivacion-select").value = data.derivacion;
 
   diagnosisList.innerHTML = "";
@@ -221,7 +208,7 @@ async function loadPatientData(dni) {
 
   try {
     const [ficha, cita, borrador, historial] = await Promise.all([
-      fetchFichaSocial(dni),
+      fetchFicha(dni),
       fetchCita(dni),
       fetchBorrador(dni),
       fetchHistorialSesiones(dni)
@@ -233,6 +220,7 @@ async function loadPatientData(dni) {
       renderFichaSocial(ficha);
     }
 
+    citaActual = cita;
     patientDatetime.textContent = cita && cita.fechaLabel && cita.hora ? `${cita.fechaLabel} — ${cita.hora}` : "—";
 
     // Número de la sesión que se está por registrar: las ya completadas + 1.
@@ -282,10 +270,17 @@ riskSignal.addEventListener("change", function (e) {
   updateRiskGlow(e.target.checked);
 });
 
-// Diagnóstico presuntivo: se elige de la lista oficial (select), no texto libre.
-var diagnosisSelect = document.getElementById("diagnosis-select");
-var addDiagnosisBtn = document.getElementById("add-diagnosis-btn");
+// Diagnóstico presuntivo: buscador con autocompletado contra el catálogo
+// CIE-10 completo de la API pública de notasalud.com (JSON, CORS abierto,
+// 120 búsquedas/min). Al tocar un resultado se agrega a la lista.
+var diagnosisSearch = document.getElementById("diagnosis-search");
+var diagnosisResults = document.getElementById("diagnosis-results");
+var diagnosisCodeInput = document.getElementById("diagnosis-code");
 var diagnosisList = document.getElementById("diagnosis-list");
+
+var CIE10_API = "https://notasalud.com/buscar/cie-10";
+var busquedaTimer = null;
+var contadorBusquedas = 0; // descarta respuestas que llegan tarde (fuera de orden)
 
 function buildDiagnosisRow(code, label) {
   var row = document.createElement("div");
@@ -307,16 +302,103 @@ function buildDiagnosisRow(code, label) {
   return row;
 }
 
-addDiagnosisBtn.addEventListener("click", function () {
-  var code = diagnosisSelect.value;
-  if (!code) return;
+// La API devuelve los códigos sin punto ("F411"); el formato estándar
+// CIE-10 lleva punto tras el tercer carácter ("F41.1").
+function formatearCodigoCie10(codigo) {
+  return codigo.length > 3 ? codigo.slice(0, 3) + "." + codigo.slice(3) : codigo;
+}
 
-  var alreadyAdded = diagnosisList.querySelector('[data-code="' + code + '"]');
-  if (alreadyAdded) return;
+function ocultarResultados() {
+  diagnosisResults.classList.add("hidden");
+  diagnosisResults.innerHTML = "";
+}
 
-  var label = diagnosisSelect.options[diagnosisSelect.selectedIndex].text;
-  diagnosisList.appendChild(buildDiagnosisRow(code, label));
-  diagnosisSelect.value = "";
+function mostrarMensajeResultados(mensaje) {
+  diagnosisResults.innerHTML = "";
+  var li = document.createElement("li");
+  li.className = "px-4 py-2.5 text-body-md text-on-surface-variant";
+  li.textContent = mensaje;
+  diagnosisResults.appendChild(li);
+  diagnosisResults.classList.remove("hidden");
+}
+
+function agregarDiagnostico(codigo, label) {
+  diagnosisCodeInput.value = codigo;
+  if (!diagnosisList.querySelector('[data-code="' + codigo + '"]')) {
+    diagnosisList.appendChild(buildDiagnosisRow(codigo, label));
+    formularioSucio = true;
+  }
+  diagnosisSearch.value = "";
+  ocultarResultados();
+}
+
+function renderResultadosCie10(items) {
+  diagnosisResults.innerHTML = "";
+
+  if (items.length === 0) {
+    mostrarMensajeResultados("Sin resultados para esa búsqueda.");
+    return;
+  }
+
+  items.forEach(function (item) {
+    var codigo = formatearCodigoCie10(String(item.codigo || ""));
+    var li = document.createElement("li");
+    li.className =
+      "px-4 py-2.5 text-body-md hover:bg-surface-container-low cursor-pointer border-b border-outline-variant/30";
+
+    var codigoEl = document.createElement("span");
+    codigoEl.className = "font-semibold text-secondary";
+    codigoEl.textContent = codigo;
+    li.appendChild(codigoEl);
+    li.appendChild(document.createTextNode(" — " + (item.nombre || "")));
+
+    li.addEventListener("click", function () {
+      agregarDiagnostico(codigo, codigo + " - " + (item.nombre || ""));
+    });
+
+    diagnosisResults.appendChild(li);
+  });
+
+  diagnosisResults.classList.remove("hidden");
+}
+
+async function buscarCie10(texto) {
+  var miBusqueda = ++contadorBusquedas;
+  try {
+    var resp = await fetch(CIE10_API + "?q=" + encodeURIComponent(texto) + "&limit=10");
+    if (!resp.ok) throw new Error("HTTP " + resp.status);
+    var data = await resp.json();
+    if (miBusqueda !== contadorBusquedas) return; // ya hay una búsqueda más nueva
+    renderResultadosCie10(data.results || []);
+  } catch (err) {
+    if (miBusqueda !== contadorBusquedas) return;
+    console.error("Error al buscar en el catálogo CIE-10:", err);
+    mostrarMensajeResultados("No se pudo buscar. Revisa tu conexión a internet.");
+  }
+}
+
+diagnosisSearch.addEventListener("input", function () {
+  var texto = diagnosisSearch.value.trim();
+  clearTimeout(busquedaTimer);
+
+  if (texto.length < 3) {
+    ocultarResultados();
+    return;
+  }
+  // Espera 300 ms tras la última tecla para no disparar una consulta por letra.
+  busquedaTimer = setTimeout(function () {
+    buscarCie10(texto);
+  }, 300);
+});
+
+diagnosisSearch.addEventListener("keydown", function (e) {
+  if (e.key === "Escape") ocultarResultados();
+});
+
+document.addEventListener("click", function (e) {
+  if (!e.target.closest("#diagnosis-search") && !e.target.closest("#diagnosis-results")) {
+    ocultarResultados();
+  }
 });
 
 diagnosisList.addEventListener("click", function (e) {
@@ -376,8 +458,6 @@ function collectFormData() {
     motivoConsulta: document.getElementById("motivo-textarea").value,
     evolucion: document.getElementById("evolucion-textarea").value,
     aptitud: aptitudInput ? aptitudInput.value : null,
-    seguimiento: document.getElementById("seguimiento-select").value,
-    restricciones: document.getElementById("restricciones-textarea").value,
     derivacion: document.getElementById("derivacion-select").value,
     diagnosticos: diagnosticos,
     accionesRealizadas: acciones,
@@ -433,7 +513,14 @@ async function guardarYAgendarSiguiente() {
   try {
     await addDoc(
       sesionesCollection(dni),
-      Object.assign({}, datos, { estado: "completada", revisado: false, guardadoEn: serverTimestamp() })
+      Object.assign({}, datos, {
+        estado: "completada",
+        revisado: false,
+        // La modalidad viene de la cita reservada; alimenta el gráfico
+        // "Modalidades de Atención" del tablero de indicadores.
+        modalidad: citaActual && citaActual.modalidad ? citaActual.modalidad : null,
+        guardadoEn: serverTimestamp()
+      })
     );
 
     try {
@@ -493,8 +580,6 @@ function limpiarFormulario() {
   document.getElementById("evolucion-textarea").value = "";
   var aptitudMarcada = document.querySelector('input[name="aptitud"]:checked');
   if (aptitudMarcada) aptitudMarcada.checked = false;
-  document.getElementById("seguimiento-select").selectedIndex = 0;
-  document.getElementById("restricciones-textarea").value = "";
   document.getElementById("derivacion-select").selectedIndex = 0;
   diagnosisList.innerHTML = "";
   document.querySelectorAll('#acciones-list input[type="checkbox"]').forEach(function (cb) {

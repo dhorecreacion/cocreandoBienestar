@@ -64,13 +64,46 @@
 </div>
 </div>
 </div>
+<!-- Carga de histórico: importar sesiones pasadas desde un CSV -->
+<section class="bg-surface-container-lowest rounded-xl border border-outline-variant" id="import-section">
+<button class="w-full flex items-center justify-between p-4 sm:p-5" id="import-toggle" type="button">
+<h3 class="font-headline-md text-headline-md text-primary flex items-center gap-2">
+<span class="material-symbols-outlined text-secondary">upload_file</span>
+                    Carga de histórico
+                </h3>
+<span class="material-symbols-outlined text-on-surface-variant" id="import-chevron">expand_more</span>
+</button>
+<div class="hidden border-t border-outline-variant p-4 sm:p-5 space-y-4" id="import-body">
+<p class="text-body-md text-on-surface-variant">
+                    Importa las sesiones pasadas para que el historial de cada persona y el tablero de
+                    indicadores tengan los datos históricos. Descarga la plantilla de Excel, llénala
+                    (una fila por sesión — la hoja "Guía" explica cada campo) y súbela aquí.
+                </p>
+<div class="flex flex-col sm:flex-row gap-3">
+<button class="flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg border border-secondary text-secondary font-semibold hover:bg-secondary/5 transition-all" id="download-template-btn" type="button">
+<span class="material-symbols-outlined text-[20px]">download</span>
+                        Descargar plantilla Excel
+                    </button>
+<label class="flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg border border-outline-variant text-primary font-semibold hover:bg-surface-container-low transition-all cursor-pointer">
+<span class="material-symbols-outlined text-[20px]">attach_file</span>
+                        Elegir archivo llenado
+                        <input accept=".xlsx,.xls,.csv" class="hidden" id="import-file" type="file"/>
+</label>
+</div>
+<p class="hidden text-body-md font-semibold" id="import-status"></p>
+<div class="hidden max-h-40 overflow-y-auto custom-scrollbar text-label-md text-error space-y-1" id="import-errors"></div>
+<button class="hidden w-full sm:w-auto px-6 py-2.5 rounded-lg bg-primary text-on-primary font-semibold hover:opacity-90 transition-all" id="import-btn" type="button">Importar</button>
+</div>
+</section>
 <!-- Lista de pacientes -->
 <div class="grid grid-cols-1 gap-4" id="patients-list">
 <p class="text-body-md text-on-surface-variant p-4">Cargando pacientes…</p>
 </div>
 </section>
 </main>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <script src="js/sidebar.js" type="module"></script>
 <script src="js/pacientes.js" type="module"></script>
+<script src="js/importador.js" type="module"></script>
 </body>
 </html>

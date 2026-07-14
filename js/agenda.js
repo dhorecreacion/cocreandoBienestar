@@ -4,24 +4,21 @@
 // guardar la sesión final) / no_asistio / reprogramada (se marcan aquí).
 // Los nombres y áreas salen de las fichas de personal (firebase-config,
 // autenticado), pedidos por lotes como en pacientes.js.
-import { dbPsico, PACIENTES_COLLECTION, DISPONIBILIDAD_COLLECTION } from "./fb-psico.js";
-import { auth, db } from "./firebase-config.js";
+import { dbPsico, PACIENTES_COLLECTION, DISPONIBILIDAD_COLLECTION, MODALIDADES } from "./fb-psico.js";
+import { auth } from "./firebase-config.js";
+import { fetchFichasPorDnis } from "./fichas-cache.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
   collection,
   collectionGroup,
   getDocs,
   doc,
-  setDoc,
   updateDoc,
   query,
   where,
   orderBy,
   limit
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-
-const FICHAS_COLLECTION = "fichas";
-const FICHAS_IN_CHUNK = 10;
 
 const DIA_KEY_POR_GETDAY = ["domingo", "lunes", "martes", "miercoles", "jueves", "viernes", "sabado"];
 const DIAS_CORTOS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
@@ -60,6 +57,7 @@ const filterTodasBtn = document.getElementById("filter-todas");
 let reservas = []; // [{ dni, data }]
 let fichasMap = new Map();
 let disponibilidadMap = {};
+let intervaloMinutos = 30; // duración de cita; la configura el administrador
 let filtroActual = "hoy";
 
 // ---------- Utilidades ----------
@@ -99,36 +97,14 @@ async function fetchDisponibilidadMap() {
   const mapa = {};
   const snap = await getDocs(collection(dbPsico, DISPONIBILIDAD_COLLECTION));
   snap.forEach((d) => {
+    if (d.id === "config") {
+      const minutos = Number(d.data().intervaloMinutos);
+      if (minutos >= 10 && minutos <= 120) intervaloMinutos = minutos;
+      return;
+    }
     mapa[d.id] = d.data().bloques || [];
   });
   return mapa;
-}
-
-async function fetchFichasPorDnis(dnis) {
-  const fichas = new Map();
-  const chunks = [];
-  for (let i = 0; i < dnis.length; i += FICHAS_IN_CHUNK) {
-    chunks.push(dnis.slice(i, i + FICHAS_IN_CHUNK));
-  }
-
-  const snapshots = await Promise.all(
-    chunks.map((chunk) => getDocs(query(collection(db, FICHAS_COLLECTION), where("personal.doc", "in", chunk))))
-  );
-
-  snapshots.forEach((snap) => {
-    snap.forEach((d) => {
-      const data = d.data();
-      const personal = data.personal || {};
-      const laboral = data.laboral || {};
-      if (!personal.doc) return;
-      fichas.set(personal.doc, {
-        nombre: [personal.nombres, personal.apellidos].filter(Boolean).join(" "),
-        area: laboral.area || ""
-      });
-    });
-  });
-
-  return fichas;
 }
 
 // ---------- Render de tarjetas (DOM APIs: el DNI viene del formulario público) ----------
@@ -163,6 +139,18 @@ function crearTarjetaCita(reserva) {
   fechaEl.textContent = data.fechaLabel || "—";
   horario.appendChild(horaEl);
   horario.appendChild(fechaEl);
+
+  // Modalidad elegida al reservar (las citas antiguas no la tienen).
+  if (data.modalidad && MODALIDADES[data.modalidad]) {
+    const modalidadEl = document.createElement("p");
+    modalidadEl.className = "text-label-md text-on-surface-variant flex items-center gap-1";
+    const modalidadIcon = document.createElement("span");
+    modalidadIcon.className = "material-symbols-outlined text-[14px]";
+    modalidadIcon.textContent = MODALIDADES[data.modalidad].icon;
+    modalidadEl.appendChild(modalidadIcon);
+    modalidadEl.appendChild(document.createTextNode(MODALIDADES[data.modalidad].label));
+    horario.appendChild(modalidadEl);
+  }
   cuerpo.appendChild(horario);
 
   // Identidad
@@ -181,6 +169,35 @@ function crearTarjetaCita(reserva) {
   subEl.textContent = "DNI: " + reserva.dni + (ficha && ficha.area ? " · " + ficha.area : "");
   textos.appendChild(nombreEl);
   textos.appendChild(subEl);
+
+  // Datos de contacto: el celular aplica a toda cita (coordinación y
+  // recordatorios); el enlace solo a las de video.
+  if (data.telefonoWsp) {
+    const contactoEl = document.createElement("a");
+    contactoEl.href = "https://wa.me/51" + encodeURIComponent(data.telefonoWsp);
+    contactoEl.target = "_blank";
+    contactoEl.rel = "noopener";
+    contactoEl.className = "text-label-md text-secondary hover:underline flex items-center gap-1";
+    const wspIcon = document.createElement("span");
+    wspIcon.className = "material-symbols-outlined text-[14px]";
+    wspIcon.textContent = "chat";
+    contactoEl.appendChild(wspIcon);
+    contactoEl.appendChild(document.createTextNode("WhatsApp: " + data.telefonoWsp));
+    textos.appendChild(contactoEl);
+  }
+  if (data.modalidad === "virtual" && data.enlace && /^https?:\/\//i.test(data.enlace)) {
+    const enlaceEl = document.createElement("a");
+    enlaceEl.href = data.enlace;
+    enlaceEl.target = "_blank";
+    enlaceEl.rel = "noopener";
+    enlaceEl.className = "text-label-md text-secondary hover:underline flex items-center gap-1";
+    const linkIcon = document.createElement("span");
+    linkIcon.className = "material-symbols-outlined text-[14px]";
+    linkIcon.textContent = "link";
+    enlaceEl.appendChild(linkIcon);
+    enlaceEl.appendChild(document.createTextNode("Abrir enlace de reunión"));
+    textos.appendChild(enlaceEl);
+  }
   identidad.appendChild(avatar);
   identidad.appendChild(textos);
   cuerpo.appendChild(identidad);
@@ -333,7 +350,7 @@ function generarHorasDelDia(bloques) {
       const fin = hf * 60 + mf;
       while (actual < fin) {
         horas.add(`${String(Math.floor(actual / 60)).padStart(2, "0")}:${String(actual % 60).padStart(2, "0")}`);
-        actual += 30;
+        actual += intervaloMinutos;
       }
     });
   return Array.from(horas).sort();

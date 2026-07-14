@@ -45,7 +45,7 @@
 </div>
 </div>
 <!-- Metric Grid -->
-<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-gutter mb-gutter">
+<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-gutter mb-gutter">
 <!-- Metric 1: Atenciones del Mes (sesiones realizadas) -->
 <div class="glass-card p-6 rounded-xl transition-all hover:-translate-y-1">
 <div class="flex justify-between items-start mb-4">
@@ -56,17 +56,6 @@
 </div>
 <p class="text-on-surface-variant font-label-md">Atenciones del Mes</p>
 <h4 class="text-3xl font-bold text-primary mt-1" id="kpi-atenciones-mes">—</h4>
-</div>
-<!-- Metric 2: % Cumplimiento de Meta (la meta mensual aún no se configura) -->
-<div class="glass-card p-6 rounded-xl transition-all hover:-translate-y-1 border-l-4 border-secondary">
-<div class="flex justify-between items-start mb-4">
-<div class="p-2 rounded-lg bg-secondary/10 text-secondary">
-<span class="material-symbols-outlined">task_alt</span>
-</div>
-<span class="text-xs font-bold text-primary/40 bg-surface-container-high px-2 py-1 rounded" id="kpi-meta-chip">Meta no definida</span>
-</div>
-<p class="text-on-surface-variant font-label-md">% Cumplimiento de Meta</p>
-<h4 class="text-3xl font-bold text-primary mt-1" id="kpi-meta">—</h4>
 </div>
 <!-- Metric 3: % Participación (histórico: % de la planilla alguna vez atendido) -->
 <div class="glass-card p-6 rounded-xl transition-all hover:-translate-y-1">
@@ -166,12 +155,11 @@
 <p class="text-body-md text-on-surface-variant">Cargando…</p>
 </div>
 </div>
-<!-- Modalidades de Atención: aún sin datos reales -->
+<!-- Modalidades de Atención (de las sesiones registradas) -->
 <div class="col-span-12 lg:col-span-4 glass-card p-6 sm:p-8 rounded-xl">
 <h5 class="font-headline-md text-headline-md text-primary mb-6">Modalidades de Atención</h5>
-<div class="flex flex-col items-center justify-center text-center gap-2 py-8">
-<span class="material-symbols-outlined text-4xl text-outline">pending_actions</span>
-<p class="text-body-md text-on-surface-variant">La modalidad (presencial / video / llamada) todavía no se registra al reservar ni al atender, así que aún no hay datos para este gráfico.</p>
+<div class="space-y-6" id="chart-modalidades">
+<p class="text-body-md text-on-surface-variant">Cargando…</p>
 </div>
 </div>
 <!-- Edad y Género -->

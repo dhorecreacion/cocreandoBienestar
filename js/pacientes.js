@@ -7,17 +7,12 @@
 //      lotes con where("personal.doc", "in", [...]) solo para los DNIs que
 //      realmente aparecen en el directorio.
 import { dbPsico, PACIENTES_COLLECTION } from "./fb-psico.js";
-import { db } from "./firebase-config.js";
+import { fetchFichasPorDnis } from "./fichas-cache.js";
 import {
   collection,
   collectionGroup,
-  getDocs,
-  query,
-  where
+  getDocs
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-
-const FICHAS_COLLECTION = "fichas";
-const FICHAS_IN_CHUNK = 10; // límite seguro de valores por consulta "in"
 
 const searchInput = document.getElementById("search-input");
 const areaFilter = document.getElementById("area-filter");
@@ -90,33 +85,6 @@ async function fetchSesionesAgrupadas() {
   });
 
   return porDni;
-}
-
-async function fetchFichasPorDnis(dnis) {
-  const fichas = new Map();
-  const chunks = [];
-  for (let i = 0; i < dnis.length; i += FICHAS_IN_CHUNK) {
-    chunks.push(dnis.slice(i, i + FICHAS_IN_CHUNK));
-  }
-
-  const snapshots = await Promise.all(
-    chunks.map((chunk) => getDocs(query(collection(db, FICHAS_COLLECTION), where("personal.doc", "in", chunk))))
-  );
-
-  snapshots.forEach((snap) => {
-    snap.forEach((d) => {
-      const data = d.data();
-      const personal = data.personal || {};
-      const laboral = data.laboral || {};
-      if (!personal.doc) return;
-      fichas.set(personal.doc, {
-        nombre: [personal.nombres, personal.apellidos].filter(Boolean).join(" "),
-        area: laboral.area || ""
-      });
-    });
-  });
-
-  return fichas;
 }
 
 // ---------- Armado de registros ----------
@@ -289,6 +257,10 @@ function renderStats() {
 }
 
 function poblarFiltroAreas() {
+  // Se limpia primero (menos la opción "Todas") porque el directorio puede
+  // recargarse tras importar histórico sin refrescar la página.
+  while (areaFilter.options.length > 1) areaFilter.remove(1);
+
   const areas = Array.from(new Set(registros.map((r) => r.area).filter(Boolean))).sort();
   areas.forEach((area) => {
     const option = document.createElement("option");
@@ -320,4 +292,9 @@ async function inicializar() {
 
 searchInput.addEventListener("input", renderLista);
 areaFilter.addEventListener("change", renderLista);
+
+// El importador de histórico (js/importador.js) avisa cuando termina para
+// que el directorio se recargue sin refrescar la página.
+window.addEventListener("historico-importado", inicializar);
+
 inicializar();

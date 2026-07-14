@@ -3,13 +3,15 @@
 // autenticar contra el proyecto de fb-psico.js. El resto de la ficha
 // (nombre, teléfono, área, modalidad) se completa más adelante, cuando esa
 // parte del flujo se conecte.
-import { dbPsico, PACIENTES_COLLECTION, DISPONIBILIDAD_COLLECTION } from "./fb-psico.js";
+import { dbPsico, PACIENTES_COLLECTION, DISPONIBILIDAD_COLLECTION, MODALIDADES } from "./fb-psico.js";
 import {
   doc,
   setDoc,
   serverTimestamp,
   collection,
-  getDocs
+  getDocs,
+  query,
+  where
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { auth } from "./firebase-config.js";
 import { signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
@@ -46,13 +48,18 @@ const monthLabel = document.getElementById("calendar-month-label");
 const daysGrid = document.getElementById("calendar-days-grid");
 const timeOptionsContainer = document.getElementById("time-options");
 
+const wspInput = document.getElementById("wsp-input");
+
 let disponibilidadMap = {};
+let intervaloMinutos = 30; // duración de cita; la configura el administrador
 let horasOcupadas = new Set();
 let calendarioMesActual = new Date();
 let selectedFecha = null;
 let selectedFechaLabel = null;
 let selectedFechaLarga = null;
 let selectedHora = null;
+let selectedModalidad = null;
+let selectedEnlace = "";
 
 function capitalizar(texto) {
   return texto.charAt(0).toUpperCase() + texto.slice(1);
@@ -69,13 +76,22 @@ async function fetchDisponibilidadMap() {
   const mapa = {};
   const snap = await getDocs(collection(dbPsico, DISPONIBILIDAD_COLLECTION));
   snap.forEach((d) => {
+    if (d.id === "config") {
+      const minutos = Number(d.data().intervaloMinutos);
+      if (minutos >= 10 && minutos <= 120) intervaloMinutos = minutos;
+      return;
+    }
     mapa[d.id] = d.data().bloques || [];
   });
   return mapa;
 }
 
 async function fetchHorasOcupadas() {
-  const snap = await getDocs(collection(dbPsico, PACIENTES_COLLECTION));
+  // Solo las citas de hoy en adelante: las pasadas no bloquean burbujas, y
+  // así el costo de lecturas de la página pública no crece con el histórico.
+  const hoyISO = formatearFechaISO(new Date());
+  const citasFuturas = query(collection(dbPsico, PACIENTES_COLLECTION), where("fecha", ">=", hoyISO));
+  const snap = await getDocs(citasFuturas);
   const ocupadas = new Set();
   snap.forEach((d) => {
     const data = d.data();
@@ -84,8 +100,10 @@ async function fetchHorasOcupadas() {
   return ocupadas;
 }
 
+// Devuelve los turnos del día (cada "intervaloMinutos") con su modalidad y
+// (si es video) el enlace de reunión del bloque al que pertenecen.
 function generarHorasDelDia(bloques) {
-  const horas = new Set();
+  const horas = new Map();
   bloques
     .filter((b) => b.activo && b.modalidad !== "emergencia")
     .forEach((b) => {
@@ -96,11 +114,16 @@ function generarHorasDelDia(bloques) {
       while (actual < fin) {
         const hh = String(Math.floor(actual / 60)).padStart(2, "0");
         const mm = String(actual % 60).padStart(2, "0");
-        horas.add(`${hh}:${mm}`);
-        actual += 30;
+        const clave = `${hh}:${mm}`;
+        if (!horas.has(clave)) {
+          horas.set(clave, { modalidad: b.modalidad || "presencial", enlace: b.enlace || "" });
+        }
+        actual += intervaloMinutos;
       }
     });
-  return Array.from(horas).sort();
+  return Array.from(horas.entries())
+    .map(([hora, info]) => ({ hora, modalidad: info.modalidad, enlace: info.enlace }))
+    .sort((a, b) => a.hora.localeCompare(b.hora));
 }
 
 function diaTieneAtencion(fecha) {
@@ -156,12 +179,18 @@ function renderCalendarioMes() {
   }
 }
 
+function limpiarSeleccionHora() {
+  selectedHora = null;
+  selectedModalidad = null;
+  selectedEnlace = "";
+}
+
 function seleccionarFecha(fecha) {
   selectedFecha = formatearFechaISO(fecha);
   const diaSemana = fecha.getDay();
   selectedFechaLabel = `${DIAS_CORTOS[diaSemana]} ${fecha.getDate()} ${MESES_CORTOS[fecha.getMonth()]}`;
   selectedFechaLarga = `${DIAS_LARGOS[diaSemana]} ${fecha.getDate()} de ${capitalizar(MESES_LARGOS[fecha.getMonth()])}, ${fecha.getFullYear()}`;
-  selectedHora = null;
+  limpiarSeleccionHora();
 
   renderCalendarioMes();
   dateSummary.textContent = selectedFechaLarga;
@@ -172,52 +201,92 @@ function seleccionarFecha(fecha) {
 function renderHorasDelDiaSeleccionado() {
   const fecha = new Date(`${selectedFecha}T00:00:00`);
   const key = DIA_KEY_POR_GETDAY[fecha.getDay()];
-  const horas = generarHorasDelDia(disponibilidadMap[key] || []);
+  const turnos = generarHorasDelDia(disponibilidadMap[key] || []);
 
   timeOptionsContainer.innerHTML = "";
 
-  if (horas.length === 0) {
+  if (turnos.length === 0) {
     timeOptionsContainer.innerHTML =
       '<p class="col-span-full text-body-md text-on-surface-variant p-4">No hay horarios configurados para este día.</p>';
     return;
   }
 
-  horas.forEach((hora) => {
-    const ocupada = horasOcupadas.has(`${selectedFecha}|${hora}`);
+  turnos.forEach((turno) => {
+    const ocupada = horasOcupadas.has(`${selectedFecha}|${turno.hora}`);
+    const icono = (MODALIDADES[turno.modalidad] || MODALIDADES.presencial).icon;
     const btn = document.createElement("button");
     btn.type = "button";
+    btn.title = (MODALIDADES[turno.modalidad] || MODALIDADES.presencial).label;
 
     if (ocupada) {
       btn.disabled = true;
       btn.className =
         "py-3 px-2 rounded-full border border-outline-variant bg-surface-container-low text-outline flex items-center justify-center gap-1 cursor-not-allowed opacity-70";
-      btn.innerHTML = `<span class="material-symbols-outlined text-[16px]">lock</span><span class="font-label-md text-label-md">${hora}</span>`;
+      btn.innerHTML = `<span class="material-symbols-outlined text-[16px]">lock</span><span class="font-label-md text-label-md">${turno.hora}</span>`;
     } else {
-      const seleccionada = hora === selectedHora;
+      const seleccionada = turno.hora === selectedHora;
       btn.className = seleccionada ? TIME_SELECTED_CLASS : TIME_UNSELECTED_CLASS;
       btn.innerHTML = seleccionada
-        ? `<span class="font-label-md text-label-md font-semibold">${hora}</span>`
-        : `<div class="w-2 h-2 rounded-full bg-[#10b981] group-hover:scale-110 transition-transform"></div><span class="font-label-md text-label-md">${hora}</span>`;
-      btn.addEventListener("click", () => seleccionarHora(hora));
+        ? `<span class="material-symbols-outlined text-[16px]">${icono}</span><span class="font-label-md text-label-md font-semibold">${turno.hora}</span>`
+        : `<span class="material-symbols-outlined text-[16px] text-[#10b981] group-hover:scale-110 transition-transform">${icono}</span><span class="font-label-md text-label-md">${turno.hora}</span>`;
+      btn.addEventListener("click", () => seleccionarHora(turno));
     }
 
     timeOptionsContainer.appendChild(btn);
   });
 }
 
-function seleccionarHora(hora) {
-  selectedHora = hora;
+function seleccionarHora(turno) {
+  selectedHora = turno.hora;
+  selectedModalidad = turno.modalidad;
+  selectedEnlace = turno.enlace || "";
+
   renderHorasDelDiaSeleccionado();
   updateBookingSummary();
 }
 
 function updateBookingSummary() {
   if (selectedFechaLabel && selectedHora) {
-    bookingSummary.textContent = `Resumen: ${selectedFechaLabel}, ${selectedHora}`;
+    const modalidadLabel = selectedModalidad ? ` · ${(MODALIDADES[selectedModalidad] || {}).label || ""}` : "";
+    bookingSummary.textContent = `Resumen: ${selectedFechaLabel}, ${selectedHora}${modalidadLabel}`;
   } else if (selectedFechaLabel) {
     bookingSummary.textContent = `Resumen: ${selectedFechaLabel}, elige una hora`;
   } else {
     bookingSummary.textContent = "Resumen: selecciona fecha y hora";
+  }
+}
+
+// Pantalla de confirmación: modalidad elegida y su dato de contacto
+// (número al que llamarán, o enlace de la videollamada).
+function renderResumenModalidad(telefonoWsp) {
+  const summaryModalidad = document.getElementById("summary-modalidad");
+  const extraRow = document.getElementById("summary-extra-row");
+  const extraLabel = document.getElementById("summary-extra-label");
+  const extraValue = document.getElementById("summary-extra-value");
+
+  summaryModalidad.textContent = (MODALIDADES[selectedModalidad] || {}).label || "—";
+  extraValue.textContent = "";
+
+  if (selectedModalidad === "llamada") {
+    extraLabel.textContent = "Te llamarán al";
+    extraValue.textContent = telefonoWsp;
+    extraRow.classList.remove("hidden");
+  } else if (selectedModalidad === "virtual") {
+    extraLabel.textContent = "Enlace de la reunión";
+    if (selectedEnlace && /^https?:\/\//i.test(selectedEnlace)) {
+      const enlaceA = document.createElement("a");
+      enlaceA.href = selectedEnlace;
+      enlaceA.target = "_blank";
+      enlaceA.rel = "noopener";
+      enlaceA.className = "text-secondary underline";
+      enlaceA.textContent = "Unirse a la videollamada";
+      extraValue.appendChild(enlaceA);
+    } else {
+      extraValue.textContent = "Te lo enviarán antes de la cita";
+    }
+    extraRow.classList.remove("hidden");
+  } else {
+    extraRow.classList.add("hidden");
   }
 }
 
@@ -260,6 +329,17 @@ confirmBtn.addEventListener("click", async () => {
   }
   dniInput.classList.remove("border-error");
 
+  // El celular es obligatorio para toda reserva (celular peruano: 9 dígitos
+  // empezando en 9): sirve para coordinar, recordar y, si la atención es
+  // por llamada, para llamar a la persona.
+  const telefonoWsp = wspInput.value.trim();
+  if (!/^9\d{8}$/.test(telefonoWsp)) {
+    wspInput.classList.add("border-error");
+    wspInput.focus();
+    return;
+  }
+  wspInput.classList.remove("border-error");
+
   confirmBtn.disabled = true;
   confirmBtn.textContent = "Registrando...";
 
@@ -271,6 +351,9 @@ confirmBtn.addEventListener("click", async () => {
         fecha: selectedFecha,
         fechaLabel: selectedFechaLabel,
         hora: selectedHora,
+        modalidad: selectedModalidad,
+        enlace: selectedModalidad === "virtual" ? selectedEnlace : "",
+        telefonoWsp: telefonoWsp,
         // Una nueva reserva siempre arranca el ciclo de nuevo: si la persona
         // ya había sido atendida (o no asistió), esta es otra cita.
         estado: "reservada",
@@ -282,8 +365,10 @@ confirmBtn.addEventListener("click", async () => {
     horasOcupadas.add(`${selectedFecha}|${selectedHora}`);
     summaryDni.textContent = dni;
     summaryDatetime.textContent = `${selectedFechaLabel}, ${selectedHora}`;
+    renderResumenModalidad(telefonoWsp);
 
-    selectedHora = null;
+    limpiarSeleccionHora();
+    wspInput.value = "";
     renderHorasDelDiaSeleccionado();
     updateBookingSummary();
 

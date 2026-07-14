@@ -156,6 +156,36 @@ async function cargarYRenderizar() {
 pintarFechasSemana();
 cargarYRenderizar();
 
+// ---------- Duración de cada cita (documento "config" en la misma colección).
+// index.html y la reprogramación de la agenda generan las burbujas con este
+// intervalo. ----------
+var intervaloSelect = document.getElementById("intervalo-select");
+
+async function cargarIntervalo() {
+  try {
+    var snap = await getDoc(doc(dbPsico, DISPONIBILIDAD_COLLECTION, "config"));
+    var minutos = snap.exists() ? Number(snap.data().intervaloMinutos) : 30;
+    if ([20, 30, 45, 60].includes(minutos)) intervaloSelect.value = String(minutos);
+  } catch (err) {
+    console.error("Error al cargar la duración de cita:", err);
+  }
+}
+
+intervaloSelect.addEventListener("change", async function () {
+  try {
+    await setDoc(
+      doc(dbPsico, DISPONIBILIDAD_COLLECTION, "config"),
+      { intervaloMinutos: Number(intervaloSelect.value) },
+      { merge: true }
+    );
+  } catch (err) {
+    console.error("Error al guardar la duración de cita:", err);
+    alert("No se pudo guardar la duración de cita.");
+  }
+});
+
+cargarIntervalo();
+
 // ---------- Toggle rápido de encendido/apagado (sin abrir el modal) ----------
 var calendarBody = document.getElementById("calendar-body");
 
@@ -214,11 +244,16 @@ var MODALIDAD_OPTION_BASE = "modalidad-option flex items-center gap-2 p-3 rounde
 var MODALIDAD_OPTION_INACTIVE = MODALIDAD_OPTION_BASE + " border-outline-variant hover:border-secondary";
 var MODALIDAD_OPTION_ACTIVE = MODALIDAD_OPTION_BASE + " border-secondary bg-secondary/5";
 
+var bloqueEnlaceWrap = document.getElementById("bloque-enlace-wrap");
+var bloqueEnlace = document.getElementById("bloque-enlace");
+
 function marcarModalidadSeleccionada(modalidad) {
   modalidadSeleccionada = modalidad;
   bloqueModalidadOptions.querySelectorAll("[data-modalidad]").forEach(function (btn) {
     btn.className = btn.dataset.modalidad === modalidad ? MODALIDAD_OPTION_ACTIVE : MODALIDAD_OPTION_INACTIVE;
   });
+  // El enlace de reunión solo aplica a bloques de Video.
+  bloqueEnlaceWrap.classList.toggle("hidden", modalidad !== "virtual");
 }
 
 bloqueModalidadOptions.querySelectorAll("[data-modalidad]").forEach(function (btn) {
@@ -243,12 +278,14 @@ function abrirModalBloque(dia, bloqueId) {
     marcarModalidadSeleccionada(bloqueExistente.modalidad);
     bloqueHoraInicio.value = bloqueExistente.horaInicio;
     bloqueHoraFin.value = bloqueExistente.horaFin;
+    bloqueEnlace.value = bloqueExistente.enlace || "";
     bloqueModalDelete.classList.remove("hidden");
   } else {
     bloqueModalTitle.textContent = "Agregar bloque";
     marcarModalidadSeleccionada("presencial");
     bloqueHoraInicio.value = "09:00";
     bloqueHoraFin.value = "10:00";
+    bloqueEnlace.value = "";
     bloqueModalDelete.classList.add("hidden");
   }
 
@@ -284,6 +321,7 @@ bloqueModalSave.addEventListener("click", async function () {
     return;
   }
 
+  var enlace = modalidadSeleccionada === "virtual" ? bloqueEnlace.value.trim() : "";
   var bloquesDia = estadoDisponibilidad[modalDiaActual] || [];
 
   if (modalBloqueIdActual) {
@@ -294,6 +332,7 @@ bloqueModalSave.addEventListener("click", async function () {
       bloque.modalidad = modalidadSeleccionada;
       bloque.horaInicio = horaInicio;
       bloque.horaFin = horaFin;
+      bloque.enlace = enlace;
     }
   } else {
     bloquesDia.push({
@@ -301,6 +340,7 @@ bloqueModalSave.addEventListener("click", async function () {
       modalidad: modalidadSeleccionada,
       horaInicio: horaInicio,
       horaFin: horaFin,
+      enlace: enlace,
       activo: true
     });
   }
@@ -340,6 +380,12 @@ bloqueModalDelete.addEventListener("click", async function () {
     console.error("Error al eliminar el bloque:", err);
     mostrarErrorModal("No se pudo eliminar el bloque.");
   }
+});
+
+// ---------- Vista previa pública: abre la página de reserva tal como la ve
+// el trabajador, en otra pestaña ----------
+document.getElementById("vista-previa-btn").addEventListener("click", function () {
+  window.open("index.html", "_blank");
 });
 
 // ---------- Guardar Cambios (re-sincroniza todo, por si acaso) ----------

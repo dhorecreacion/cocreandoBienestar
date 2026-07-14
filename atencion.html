@@ -135,10 +135,9 @@
 <div class="w-2 h-6 bg-tertiary-fixed-dim bg-opacity-80 rounded-full"></div>
 <h4 class="font-headline-md text-headline-md">2. Decisiones Ocupacionales</h4>
 </div>
-<div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
 <div class="flex flex-col gap-2">
 <label class="font-label-md text-label-md text-on-surface-variant">Aptitud Laboral</label>
-<div class="flex flex-col gap-2">
+<div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
 <label class="flex items-center gap-3 p-3 rounded-lg border border-outline-variant hover:border-secondary cursor-pointer transition-all">
 <input class="text-secondary focus:ring-secondary" name="aptitud" type="radio" value="apto"/>
 <span class="text-body-md font-medium">Apto</span>
@@ -153,23 +152,6 @@
 </label>
 </div>
 </div>
-<div class="space-y-4">
-<div class="flex flex-col gap-2">
-<label class="font-label-md text-label-md text-on-surface-variant">Seguimiento</label>
-<select class="w-full h-11 px-4 rounded-lg border border-outline-variant focus-ring text-body-md" id="seguimiento-select">
-<option>Seguimiento individual programado</option>
-<option>Orientación y consejería breve</option>
-<option>Psicoeducación / pausas activas</option>
-<option>En derivación (tratamiento externo)</option>
-<option>Solo observación</option>
-</select>
-</div>
-<div class="flex flex-col gap-2">
-<label class="font-label-md text-label-md text-on-surface-variant">Restricciones (Si aplica)</label>
-<textarea class="w-full p-4 rounded-lg border border-outline-variant focus-ring text-body-md resize-none" id="restricciones-textarea" placeholder="Especificar limitaciones..." rows="2"></textarea>
-</div>
-</div>
-</div>
 </div>
 <div class="bg-surface-container-lowest p-4 sm:p-6 lg:p-8 rounded-xl border border-outline-variant flex flex-col">
 <div class="flex items-center gap-3 mb-6">
@@ -180,10 +162,9 @@
 <p class="text-body-md text-on-surface-variant">¿Requiere interconsulta con psiquiatría o especialidad médica?</p>
 <select class="w-full h-11 px-4 rounded-lg border border-outline-variant focus-ring text-body-md" id="derivacion-select">
 <option>No requerida</option>
-<option>Psiquiatría (Urgente)</option>
-<option>Psiquiatría (Rutina)</option>
-<option>Neurología</option>
-<option>Medicina General</option>
+<option>Psiquiatría</option>
+<option>Psicologia</option>
+<option>Neuropsicologia</option>
 </select>
 <div class="mt-4 p-4 bg-secondary/5 rounded-lg border border-dashed border-secondary/30">
 <p class="text-[11px] text-secondary font-semibold uppercase tracking-wider mb-2">Nota Interna</p>
@@ -201,18 +182,26 @@
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-10">
 <div class="space-y-6">
 <div class="flex flex-col gap-3">
-<label class="font-label-md text-label-md text-on-surface-variant mb-1">Diagnóstico Presuntivo (lista oficial CIE-10 / DSM-5)</label>
-<div class="flex flex-col sm:flex-row gap-2">
-<select class="flex-1 h-11 px-4 rounded-lg border border-outline-variant focus-ring text-body-md" id="diagnosis-select">
-<option value="">Selecciona un diagnóstico de la lista oficial...</option>
-<option value="F41.1">F41.1 - Trastorno de ansiedad generalizada</option>
-<option value="F32.1">F32.1 - Episodio depresivo moderado</option>
-<option value="F43.1">F43.1 - Trastorno de estrés postraumático</option>
-<option value="F43.2">F43.2 - Trastorno de adaptación</option>
-<option value="F51.0">F51.0 - Insomnio no orgánico</option>
-<option value="Z73.0">Z73.0 - Problemas relacionados con agotamiento (burnout)</option>
-</select>
-<button class="px-4 py-2.5 sm:py-0 rounded-lg bg-secondary text-on-secondary font-semibold hover:opacity-90 transition-all w-full sm:w-auto" id="add-diagnosis-btn" type="button">Agregar</button>
+<label class="font-label-md text-label-md text-on-surface-variant mb-1">
+  Diagnóstico Presuntivo (catálogo oficial CIE-10)
+</label>
+
+<div class="relative w-full">
+  <input
+      type="text"
+      id="diagnosis-search"
+      class="w-full h-11 px-4 rounded-lg border border-outline-variant focus-ring text-body-md"
+      placeholder="Buscar diagnóstico por nombre o código (ej. ansiedad, F41)..."
+      autocomplete="off"
+    />
+  <input id="diagnosis-code" name="codigo_cie10" type="hidden"/>
+  <ul
+      id="diagnosis-results"
+      class="absolute z-10 w-full bg-white border border-outline-variant rounded-lg mt-1 max-h-60 overflow-y-auto hidden shadow-lg"
+    >
+  </ul>
+</div>
+<p class="text-[10px] text-on-surface-variant">Escribe al menos 3 letras y toca un resultado para agregarlo a la lista.</p>
 </div>
 <div class="space-y-2" id="diagnosis-list">
 </div>
