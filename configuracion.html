@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html class="light" lang="es">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Psicología Ocupacional | Configuración</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="css/common.css" rel="stylesheet"/>
+<script src="js/tailwind-config.js"></script>
+<script src="js/auth-guard.js" type="module"></script>
+</head>
+<body class="bg-background text-on-background min-h-screen">
+<!-- Navegación lateral (ver js/sidebar.js) -->
+<div data-active="configuracion" id="sidebar-root"></div>
+<!-- TopAppBar -->
+<header class="fixed top-0 right-0 left-0 lg:left-[240px] h-16 flex items-center pl-16 lg:pl-margin-desktop pr-margin-mobile lg:pr-margin-desktop bg-surface dark:bg-surface-container-lowest border-b border-outline-variant dark:border-outline z-40">
+<h2 class="font-headline-md text-headline-md font-bold text-primary truncate">Configuración</h2>
+</header>
+<!-- Main Content -->
+<main class="lg:ml-[240px] pt-24 pb-12 px-margin-mobile lg:px-margin-desktop max-w-[900px] space-y-gutter">
+
+<!-- Cuenta: cambiar contraseña -->
+<section class="glass-card p-6 sm:p-8 rounded-xl">
+<div class="flex items-center gap-3 mb-6">
+<span class="material-symbols-outlined text-secondary">lock</span>
+<h3 class="font-headline-md text-headline-md text-primary">Cambiar Contraseña</h3>
+</div>
+<form class="grid grid-cols-1 sm:grid-cols-2 gap-4" id="password-form">
+<div class="flex flex-col gap-2 sm:col-span-2">
+<label class="font-label-md text-label-md text-on-surface-variant">Contraseña actual</label>
+<input autocomplete="current-password" class="w-full h-11 px-4 rounded-lg border border-outline-variant focus-ring text-body-md" id="current-password" required type="password"/>
+</div>
+<div class="flex flex-col gap-2">
+<label class="font-label-md text-label-md text-on-surface-variant">Contraseña nueva</label>
+<input autocomplete="new-password" class="w-full h-11 px-4 rounded-lg border border-outline-variant focus-ring text-body-md" id="new-password" minlength="6" required type="password"/>
+</div>
+<div class="flex flex-col gap-2">
+<label class="font-label-md text-label-md text-on-surface-variant">Confirmar contraseña nueva</label>
+<input autocomplete="new-password" class="w-full h-11 px-4 rounded-lg border border-outline-variant focus-ring text-body-md" id="confirm-password" minlength="6" required type="password"/>
+</div>
+<p class="hidden text-body-md font-semibold sm:col-span-2" id="password-status"></p>
+<div class="sm:col-span-2">
+<button class="px-8 py-3 rounded-lg bg-primary text-on-primary font-bold hover:opacity-90 transition-all active:scale-95" id="password-submit" type="submit">
+                            Actualizar Contraseña
+                        </button>
+</div>
+</form>
+</section>
+
+<!-- Casos Sin Seguimiento: umbral de días -->
+<section class="glass-card p-6 sm:p-8 rounded-xl">
+<div class="flex items-center gap-3 mb-2">
+<span class="material-symbols-outlined text-secondary">event_busy</span>
+<h3 class="font-headline-md text-headline-md text-primary">Casos Sin Seguimiento</h3>
+</div>
+<p class="text-body-md text-on-surface-variant mb-6">Cuántos días sin una sesión nueva deben pasar (para un caso con riesgo o aptitud restringida) antes de que el tablero de indicadores lo marque como "sin seguimiento".</p>
+<form class="flex flex-wrap items-end gap-4" id="umbral-form">
+<div class="flex flex-col gap-2">
+<label class="font-label-md text-label-md text-on-surface-variant" for="umbral-input">Días sin sesión</label>
+<input class="w-32 h-11 px-4 rounded-lg border border-outline-variant focus-ring text-body-md" id="umbral-input" min="1" required type="number"/>
+</div>
+<button class="px-6 py-2.5 rounded-lg bg-primary text-on-primary font-semibold hover:opacity-90 transition-all active:scale-95" type="submit">Guardar</button>
+<p class="hidden text-body-md font-semibold w-full" id="umbral-status"></p>
+</form>
+</section>
+
+<!-- Catálogo: Derivaciones -->
+<section class="glass-card p-6 sm:p-8 rounded-xl">
+<div class="flex items-center gap-3 mb-2">
+<span class="material-symbols-outlined text-secondary">psychiatry</span>
+<h3 class="font-headline-md text-headline-md text-primary">Catálogo de Derivaciones</h3>
+</div>
+<p class="text-body-md text-on-surface-variant mb-6">Opciones disponibles en "Derivación" al registrar una sesión en Ficha de Atención. "No requerida" es la opción por defecto y no se puede eliminar.</p>
+<div class="space-y-2 mb-4" id="derivaciones-list"></div>
+<div class="flex flex-col sm:flex-row gap-3">
+<input class="flex-1 h-11 px-4 rounded-lg border border-outline-variant focus-ring text-body-md" id="derivacion-nueva" placeholder="Nueva opción de derivación..." type="text"/>
+<button class="px-6 py-2.5 rounded-lg border border-secondary text-secondary font-semibold hover:bg-secondary/5 transition-all" id="derivacion-agregar" type="button">Agregar</button>
+</div>
+<p class="hidden text-body-md font-semibold mt-3" id="derivaciones-status"></p>
+</section>
+
+<!-- Catálogo: Acciones Realizadas -->
+<section class="glass-card p-6 sm:p-8 rounded-xl">
+<div class="flex items-center gap-3 mb-2">
+<span class="material-symbols-outlined text-secondary">checklist</span>
+<h3 class="font-headline-md text-headline-md text-primary">Catálogo de Acciones Realizadas</h3>
+</div>
+<p class="text-body-md text-on-surface-variant mb-6">Opciones disponibles como casillas de "Acciones Realizadas" en Ficha de Atención.</p>
+<div class="space-y-2 mb-4" id="acciones-catalogo-list"></div>
+<div class="flex flex-col sm:flex-row gap-3">
+<input class="flex-1 h-11 px-4 rounded-lg border border-outline-variant focus-ring text-body-md" id="accion-nueva" placeholder="Nueva acción realizada..." type="text"/>
+<button class="px-6 py-2.5 rounded-lg border border-secondary text-secondary font-semibold hover:bg-secondary/5 transition-all" id="accion-agregar" type="button">Agregar</button>
+</div>
+<p class="hidden text-body-md font-semibold mt-3" id="acciones-catalogo-status"></p>
+</section>
+
+</main>
+<script src="js/sidebar.js" type="module"></script>
+<script src="js/configuracion.js" type="module"></script>
+</body>
+</html>

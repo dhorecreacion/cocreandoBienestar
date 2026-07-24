@@ -1,0 +1,52 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /pacientes/{dni} {
+      allow read: if true;
+      allow create: if request.resource.data.dni is string
+                    && request.resource.data.dni.size() > 0
+                    && request.resource.data.dni.size() < 10;
+      allow update: if request.resource.data.dni == resource.data.dni;
+      allow delete: if false;
+
+      match /sesiones/{sesionId} {
+        allow read, write: if true;
+      }
+
+      match /historial_citas/{historialId} {
+        // La reserva pública (index.html, sin login) crea el evento
+        // "reservada"; nunca se actualiza ni se borra, solo se agregan
+        // eventos nuevos (no_asistio/reprogramada/atendida vienen del
+        // psicólogo ya logueado, pero la regla de create es la misma).
+        // "if true" en el read, igual que sesiones: este proyecto (fb-psico)
+        // no tiene Auth propio, así que no hay un request.auth real aquí.
+        allow create: if request.resource.data.estado is string;
+        allow read: if true;
+        allow update, delete: if false;
+      }
+    }
+
+    // Necesario aparte para que collectionGroup(dbPsico, "sesiones")
+    // pueda consultar todas las subcolecciones "sesiones" a la vez.
+    match /{path=**}/sesiones/{sesionId} {
+      allow read, write: if true;
+    }
+
+    // Igual, para collectionGroup(dbPsico, "historial_citas") en indicadores.js.
+    match /{path=**}/historial_citas/{historialId} {
+      allow read: if true;
+    }
+
+    match /disponibilidad/{dia} {
+      allow read, write: if true;
+    }
+
+    // Ajustes de configuracion.html: umbral de seguimiento (doc "general")
+    // y catálogos de derivación/acciones (doc "catalogos"). Los lee
+    // atencion.html (sin login todavía en el momento de reservar), por eso
+    // "if true" igual que el resto de este proyecto.
+    match /configuracion/{docId} {
+      allow read, write: if true;
+    }
+  }
+}

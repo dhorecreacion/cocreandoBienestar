@@ -77,6 +77,14 @@
 <p class="text-body-md text-on-surface-variant">Cargando historial...</p>
 </div>
 </section>
+<!-- Aviso de edición de una sesión anterior (oculto salvo mientras se edita) -->
+<div class="hidden items-center justify-between gap-3 bg-orange-50 border border-orange-200 text-orange-800 rounded-lg px-4 py-3" id="edit-mode-banner">
+<span class="font-body-md text-body-md font-semibold flex items-center gap-2">
+<span class="material-symbols-outlined text-lg">edit</span>
+                    Editando sesión del <span id="edit-mode-fecha">—</span>
+                </span>
+<button class="text-body-md font-semibold text-orange-800 underline hover:no-underline" id="edit-mode-cancel" type="button">Cancelar edición</button>
+</div>
 <!-- Main Form -->
 <form class="space-y-8" id="clinical-record-form">
 <!-- Section 1: The Session -->
@@ -160,11 +168,9 @@
 </div>
 <div class="flex flex-col gap-4 flex-1">
 <p class="text-body-md text-on-surface-variant">¿Requiere interconsulta con psiquiatría o especialidad médica?</p>
+<!-- Opciones cargadas desde el catálogo editable en configuracion.html -->
 <select class="w-full h-11 px-4 rounded-lg border border-outline-variant focus-ring text-body-md" id="derivacion-select">
 <option>No requerida</option>
-<option>Psiquiatría</option>
-<option>Psicologia</option>
-<option>Neuropsicologia</option>
 </select>
 <div class="mt-4 p-4 bg-secondary/5 rounded-lg border border-dashed border-secondary/30">
 <p class="text-[11px] text-secondary font-semibold uppercase tracking-wider mb-2">Nota Interna</p>
@@ -210,18 +216,8 @@
 <div class="space-y-6">
 <div class="flex flex-col gap-4" id="acciones-list">
 <label class="font-label-md text-label-md text-on-surface-variant">Acciones Realizadas</label>
-<label class="flex items-center gap-3 cursor-pointer group">
-<input class="w-5 h-5 rounded border-outline-variant text-secondary focus:ring-secondary" type="checkbox" value="Recomendaciones compartidas verbalmente"/>
-<span class="text-body-md group-hover:text-primary transition-colors">Recomendaciones compartidas verbalmente</span>
-</label>
-<label class="flex items-center gap-3 cursor-pointer group">
-<input class="w-5 h-5 rounded border-outline-variant text-secondary focus:ring-secondary" type="checkbox" value="Envío de material psicoeducativo digital"/>
-<span class="text-body-md group-hover:text-primary transition-colors">Envío de material psicoeducativo digital</span>
-</label>
-<label class="flex items-center gap-3 cursor-pointer group">
-<input class="w-5 h-5 rounded border-outline-variant text-secondary focus:ring-secondary" type="checkbox" value="Pruebas psicométricas aplicadas"/>
-<span class="text-body-md group-hover:text-primary transition-colors">Pruebas psicométricas aplicadas</span>
-</label>
+<!-- Casillas generadas desde el catálogo editable en configuracion.html -->
+<div class="flex flex-col gap-4" id="acciones-checkboxes"></div>
 </div>
 <div class="flex flex-col gap-2 pt-2">
 <label class="font-label-md text-label-md text-on-surface-variant">Resultados de Pruebas (Resumen)</label>
@@ -242,6 +238,10 @@
 <button class="w-full sm:w-auto px-10 py-3.5 rounded-lg bg-primary text-on-primary font-bold hover:opacity-90 transition-all active:scale-95 flex items-center justify-center gap-2 shadow-lg shadow-primary/20" id="save-final-btn" type="button">
 <span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">done_all</span>
                         Guardar y Agendar Siguiente
+                    </button>
+<button class="hidden w-full sm:w-auto px-10 py-3.5 rounded-lg bg-primary text-on-primary font-bold hover:opacity-90 transition-all active:scale-95 items-center justify-center gap-2 shadow-lg shadow-primary/20" id="update-session-btn" type="button">
+<span class="material-symbols-outlined">sync</span>
+                        Actualizar
                     </button>
 </footer>
 </form>

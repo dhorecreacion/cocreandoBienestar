@@ -18,10 +18,7 @@
 <header class="fixed top-0 right-0 left-0 lg:left-[240px] h-16 flex justify-between items-center pl-16 lg:pl-margin-desktop pr-margin-mobile lg:pr-margin-desktop bg-surface dark:bg-surface-container-lowest border-b border-outline-variant dark:border-outline z-40">
 <div class="flex items-center gap-4 min-w-0">
 <h2 class="hidden sm:block font-headline-md text-headline-md font-bold text-primary truncate">Tablero de Indicadores</h2>
-<div class="flex bg-surface-container-low rounded-full p-1 sm:ml-4 border border-outline-variant/30">
-<button class="px-4 py-1.5 rounded-full text-label-md font-semibold transition-all bg-secondary text-on-secondary shadow-sm" id="viewPsych" type="button">Psicólogo (V8)</button>
-<button class="px-4 py-1.5 rounded-full text-label-md font-semibold transition-all text-on-surface-variant hover:bg-surface-container-high" id="viewHR" type="button">Ejecutivo RRHH (V10)</button>
-</div>
+
 </div>
 
 </header>
@@ -33,11 +30,25 @@
 <p class="font-label-md text-label-md text-on-surface-variant mb-1" id="viewSubtitle">Resumen Operativo Mensual</p>
 <h3 class="font-headline-lg text-headline-lg text-primary" id="viewTitle">Desempeño Operativo</h3>
 </div>
-<div class="flex gap-3">
-<span class="flex items-center gap-2 px-5 py-2.5 rounded-lg border border-outline-variant bg-white text-body-md font-semibold text-primary" id="periodo-label">
+<div class="flex flex-wrap gap-3">
+<label class="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-outline-variant bg-white text-body-md font-semibold text-primary" for="mes-selector">
 <span class="material-symbols-outlined text-[20px]">calendar_month</span>
-                    —
-                </span>
+<select class="bg-transparent focus:outline-none cursor-pointer" id="mes-selector">
+<option value="0">Enero</option>
+<option value="1">Febrero</option>
+<option value="2">Marzo</option>
+<option value="3">Abril</option>
+<option value="4">Mayo</option>
+<option value="5">Junio</option>
+<option value="6">Julio</option>
+<option value="7">Agosto</option>
+<option value="8">Septiembre</option>
+<option value="9">Octubre</option>
+<option value="10">Noviembre</option>
+<option value="11">Diciembre</option>
+</select>
+<span id="periodo-anio">—</span>
+</label>
 <button class="flex items-center gap-2 px-6 py-2.5 rounded-lg bg-secondary text-on-secondary text-body-md font-semibold hover:opacity-90 transition-all shadow-sm" id="export-btn" type="button">
 <span class="material-symbols-outlined text-[20px]">download</span>
                     Exportar Reporte
@@ -45,7 +56,7 @@
 </div>
 </div>
 <!-- Metric Grid -->
-<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-gutter mb-gutter">
+<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-gutter mb-gutter">
 <!-- Metric 1: Atenciones del Mes (sesiones realizadas) -->
 <div class="glass-card p-6 rounded-xl transition-all hover:-translate-y-1">
 <div class="flex justify-between items-start mb-4">
@@ -57,13 +68,14 @@
 <p class="text-on-surface-variant font-label-md">Atenciones del Mes</p>
 <h4 class="text-3xl font-bold text-primary mt-1" id="kpi-atenciones-mes">—</h4>
 </div>
-<!-- Metric 3: % Participación (histórico: % de la planilla alguna vez atendido) -->
+<!-- Metric 3: % Participación (% de citas con desenlace — atendida, no_asistio o
+     reprogramada — que terminaron en atendida; no cuenta las aún pendientes) -->
 <div class="glass-card p-6 rounded-xl transition-all hover:-translate-y-1">
 <div class="flex justify-between items-start mb-4">
 <div class="p-2 rounded-lg bg-secondary/10 text-secondary">
 <span class="material-symbols-outlined">groups</span>
 </div>
-<span class="text-xs font-bold text-primary/40 bg-surface-container-high px-2 py-1 rounded">Histórico</span>
+<span class="text-xs font-bold text-primary/40 bg-surface-container-high px-2 py-1 rounded">Asistencia</span>
 </div>
 <p class="text-on-surface-variant font-label-md">% Participación</p>
 <h4 class="text-3xl font-bold text-primary mt-1" id="kpi-participacion">—</h4>
@@ -101,6 +113,28 @@
 </div>
 <p class="text-on-surface-variant font-label-md" id="riskLabel">Casos de Riesgo</p>
 <h4 class="text-3xl font-bold text-primary mt-1" id="riskValue">—</h4>
+</div>
+<!-- Metric 7: % Reprogramación (del mes seleccionado) -->
+<div class="glass-card p-6 rounded-xl transition-all hover:-translate-y-1">
+<div class="flex justify-between items-start mb-4">
+<div class="p-2 rounded-lg bg-secondary/10 text-secondary">
+<span class="material-symbols-outlined">event_repeat</span>
+</div>
+<span class="text-xs font-bold text-primary/40 bg-surface-container-high px-2 py-1 rounded">Del mes</span>
+</div>
+<p class="text-on-surface-variant font-label-md">% Reprogramación</p>
+<h4 class="text-3xl font-bold text-primary mt-1" id="kpi-reprogramacion">—</h4>
+</div>
+<!-- Metric 8: % Capacidad Utilizada (sesiones del mes vs. bloques disponibles) -->
+<div class="glass-card p-6 rounded-xl transition-all hover:-translate-y-1">
+<div class="flex justify-between items-start mb-4">
+<div class="p-2 rounded-lg bg-secondary/10 text-secondary">
+<span class="material-symbols-outlined">event_seat</span>
+</div>
+<span class="text-xs font-bold text-primary/40 bg-surface-container-high px-2 py-1 rounded">Del mes</span>
+</div>
+<p class="text-on-surface-variant font-label-md">% Capacidad Utilizada</p>
+<h4 class="text-3xl font-bold text-primary mt-1" id="kpi-capacidad">—</h4>
 </div>
 </div>
 <!-- Charts Grid -->
@@ -141,17 +175,12 @@
 </div>
 </div>
 </div>
-<!-- Dynamic Section: Diagnósticos (V8) vs Casos Urgentes por Área (V10) -->
+<!-- Diagnósticos Más Frecuentes -->
 <div class="col-span-12 lg:col-span-6 glass-card p-6 sm:p-8 rounded-xl">
 <div class="mb-8">
-<h5 class="font-headline-md text-headline-md text-primary" id="dynamicTitle">Diagnósticos Más Frecuentes</h5>
+<h5 class="font-headline-md text-headline-md text-primary">Diagnósticos Más Frecuentes</h5>
 </div>
-<!-- Contenido Psicólogo (V8): incluye diagnósticos -->
 <div class="space-y-4" id="psychContent">
-<p class="text-body-md text-on-surface-variant">Cargando…</p>
-</div>
-<!-- Contenido RRHH (V10): solo conteos por área, sin nombres ni diagnósticos -->
-<div class="hidden space-y-3" id="hrContent">
 <p class="text-body-md text-on-surface-variant">Cargando…</p>
 </div>
 </div>
@@ -178,6 +207,52 @@
 <div class="col-span-12 lg:col-span-4 glass-card p-6 sm:p-8 rounded-xl">
 <h5 class="font-headline-md text-headline-md text-primary mb-6">Derivaciones</h5>
 <div class="space-y-6" id="chart-derivaciones">
+<p class="text-body-md text-on-surface-variant">Cargando…</p>
+</div>
+</div>
+<!-- Tendencia de Asistencia por Mes (histórico, no solo el mes elegido) -->
+<div class="col-span-12 lg:col-span-8 glass-card p-6 sm:p-8 rounded-xl">
+<div class="flex justify-between items-center mb-8">
+<h5 class="font-headline-md text-headline-md text-primary">Tendencia de Asistencia (<span id="chart-asistencia-anio">—</span>)</h5>
+<span class="flex items-center gap-1.5 text-xs text-on-surface-variant font-medium">
+<span class="w-3 h-3 rounded-full bg-secondary"></span> % de citas atendidas
+                    </span>
+</div>
+<div class="relative h-64 w-full flex items-end justify-between gap-1 px-2" id="chart-asistencia-mensual">
+<p class="text-body-md text-on-surface-variant m-auto">Cargando…</p>
+</div>
+</div>
+<!-- Aptitud Laboral (del mes elegido) -->
+<div class="col-span-12 lg:col-span-4 glass-card p-6 sm:p-8 rounded-xl">
+<h5 class="font-headline-md text-headline-md text-primary mb-8">Aptitud Laboral (mes elegido)</h5>
+<div class="flex flex-col sm:flex-row items-center gap-8 sm:gap-12">
+<div class="relative w-40 h-40 rounded-full flex-shrink-0 flex items-center justify-center" id="chart-aptitud-donut">
+<div class="w-[108px] h-[108px] rounded-full bg-surface-container-lowest flex items-center justify-center">
+<div class="text-center">
+<span class="text-2xl font-bold text-primary" id="aptitud-donut-value">—</span>
+<p class="text-[10px] text-on-surface-variant uppercase font-bold" id="aptitud-donut-label">—</p>
+</div>
+</div>
+</div>
+<div class="flex-1 w-full space-y-4" id="chart-aptitud-legend">
+<p class="text-body-md text-on-surface-variant">Cargando…</p>
+</div>
+</div>
+</div>
+<!-- Diagnóstico más frecuente por Área (histórico) -->
+<div class="col-span-12 lg:col-span-6 glass-card p-6 sm:p-8 rounded-xl">
+<h5 class="font-headline-md text-headline-md text-primary mb-6">Diagnóstico Más Frecuente por Área</h5>
+<div class="space-y-3" id="chart-diag-area">
+<p class="text-body-md text-on-surface-variant">Cargando…</p>
+</div>
+</div>
+<!-- Casos Sin Seguimiento (riesgo o restricción sin sesión reciente) -->
+<div class="col-span-12 lg:col-span-6 glass-card p-6 sm:p-8 rounded-xl">
+<div class="flex items-center justify-between mb-6">
+<h5 class="font-headline-md text-headline-md text-primary">Casos Sin Seguimiento</h5>
+<span class="text-xs text-on-surface-variant font-medium">Riesgo/restricción, +30 días sin sesión</span>
+</div>
+<div class="space-y-3" id="chart-seguimiento">
 <p class="text-body-md text-on-surface-variant">Cargando…</p>
 </div>
 </div>

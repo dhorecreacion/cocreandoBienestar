@@ -1,36 +1,44 @@
-// Tablero de Indicadores (V8 Psicólogo / V10 RRHH), con datos reales.
+// Tablero de Indicadores del Psicólogo (V8), con datos reales.
 // Fuentes (mismo patrón eficiente que pacientes.js — nunca una consulta por
-// paciente):
+// paciente, y un solo fetch por fuente aunque el psicólogo cambie de mes):
 //   1. collectionGroup "sesiones" (fb-psico): todas las sesiones clínicas.
-//   2. fichas (firebase-config, autenticado): área, género y nacimiento,
+//   2. collectionGroup "historial_citas" (fb-psico): el historial acumulado
+//      de eventos de cada cita (reservada/no_asistio/reprogramada/atendida).
+//   3. disponibilidad (fb-psico): plantilla semanal de bloques + intervalo,
+//      para calcular capacidad/utilización.
+//   4. fichas (firebase-config, autenticado): área, género y nacimiento,
 //      pedidos por lotes solo para los DNIs atendidos.
-//   3. getCountFromServer sobre fichas: total de trabajadores para calcular
-//      % Participación sin descargar toda la planilla.
-// El toggle Psicólogo/RRHH es solo visual: en producción cada rol debería
-// entrar con su propia cuenta y las reglas del backend decidir qué recibe.
-import { dbPsico, MODALIDADES } from "./fb-psico.js";
-import { auth, db } from "./firebase-config.js";
+//   5. configuracion/general (fb-psico): umbral de días para "Casos Sin
+//      Seguimiento", editable en configuracion.html.
+// El selector de mes NO vuelve a consultar Firestore: los datos crudos se
+// piden una sola vez y cada cambio de mes solo recalcula en el cliente.
+// La vista de RRHH (V10) se retiró de aquí (era un toggle en la misma
+// pantalla); si se retoma, debe vivir en su propia página de solo lectura.
+import { dbPsico, MODALIDADES, DISPONIBILIDAD_COLLECTION, DIAS_SEMANA, CONFIGURACION_COLLECTION } from "./fb-psico.js";
+import { auth } from "./firebase-config.js";
 import { fetchFichasPorDnis } from "./fichas-cache.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
-  collection,
   collectionGroup,
   getDocs,
-  getCountFromServer
+  doc,
+  getDoc
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-const FICHAS_COLLECTION = "fichas";
-
 const MESES_CORTOS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
-const MESES_LARGOS = [
-  "enero", "febrero", "marzo", "abril", "mayo", "junio",
-  "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"
-];
+const CLAVE_DIA_POR_GETDAY = ["domingo", "lunes", "martes", "miercoles", "jueves", "viernes", "sabado"];
+const UMBRAL_SEGUIMIENTO_DEFAULT = 30; // respaldo si configuracion/general aún no existe
 
 const PRIORIDAD_META = {
   high: { label: "Alta", color: "#ba1a1a" },
   medium: { label: "Media", color: "#0058be" },
   low: { label: "Baja", color: "#c5c6cd" }
+};
+
+const APTITUD_META = {
+  apto: { label: "Apto", color: "#2e7d32" },
+  restricciones: { label: "Restricciones", color: "#f59e0b" },
+  no_apto: { label: "No apto", color: "#ba1a1a" }
 };
 
 // ---------- Utilidades ----------
@@ -92,7 +100,35 @@ function mensajeVacio(contenedor, texto) {
   contenedor.appendChild(p);
 }
 
-// ---------- Carga de datos ----------
+// Barra vertical (columna) para gráficos de 12 meses, reutilizada por
+// "Evaluados por Mes" y "Tendencia de Asistencia".
+function crearColumnaMes(mesIdx, valor, maximo, esMesSeleccionado, sufijo) {
+  const columna = document.createElement("div");
+  columna.className = "flex flex-col items-center flex-1 h-full justify-end group min-w-0";
+
+  const barra = document.createElement("div");
+  barra.className =
+    "w-full rounded-t-lg relative transition-all " +
+    (esMesSeleccionado ? "bg-secondary shadow-md" : "bg-secondary/10 group-hover:bg-secondary/20");
+  barra.style.height = valor > 0 ? Math.max(4, (valor / maximo) * 100) + "%" : "2px";
+
+  const tooltip = document.createElement("div");
+  tooltip.className =
+    "absolute -top-8 left-1/2 -translate-x-1/2 bg-primary text-white text-[10px] px-2 py-1 rounded transition-opacity " +
+    (esMesSeleccionado ? "" : "opacity-0 group-hover:opacity-100");
+  tooltip.textContent = valor + (sufijo || "");
+  barra.appendChild(tooltip);
+
+  const etiqueta = document.createElement("span");
+  etiqueta.className = "mt-4 text-[11px] truncate " + (esMesSeleccionado ? "font-bold text-primary" : "text-on-surface-variant font-medium");
+  etiqueta.textContent = MESES_CORTOS[mesIdx];
+
+  columna.appendChild(barra);
+  columna.appendChild(etiqueta);
+  return columna;
+}
+
+// ---------- Carga de datos (una sola vez; el selector de mes no reconsulta) ----------
 async function fetchSesiones() {
   const snap = await getDocs(collectionGroup(dbPsico, "sesiones"));
   const sesiones = [];
@@ -103,16 +139,85 @@ async function fetchSesiones() {
   return sesiones;
 }
 
-async function fetchTotalTrabajadores() {
-  const snap = await getCountFromServer(collection(db, FICHAS_COLLECTION));
-  return snap.data().count;
+// Historial acumulado de eventos de citas (pacientes/{dni}/historial_citas):
+// a diferencia de pacientes/{dni} —que se sobreescribe en cada reserva
+// nueva—, esto nunca se pisa, así que sí permite calcular una tasa de
+// asistencia real acumulada en el tiempo.
+async function fetchCitas() {
+  const snap = await getDocs(collectionGroup(dbPsico, "historial_citas"));
+  const citas = [];
+  snap.forEach((d) => citas.push(d.data()));
+  return citas;
+}
+
+// Plantilla semanal de disponibilidad (7 días + intervalo de cita), para
+// estimar capacidad. OJO: es la plantilla ACTUAL; si los horarios cambiaron
+// en el pasado, la capacidad de meses anteriores es una aproximación, no un
+// registro histórico real (eso no se guarda hoy).
+async function fetchDisponibilidadCompleta() {
+  const [snapshots, configSnap] = await Promise.all([
+    Promise.all(DIAS_SEMANA.map((dia) => getDoc(doc(dbPsico, DISPONIBILIDAD_COLLECTION, dia)))),
+    getDoc(doc(dbPsico, DISPONIBILIDAD_COLLECTION, "config"))
+  ]);
+
+  const bloquesPorDia = {};
+  DIAS_SEMANA.forEach((dia, i) => {
+    bloquesPorDia[dia] = snapshots[i].exists() ? snapshots[i].data().bloques || [] : [];
+  });
+
+  const intervaloMinutos = configSnap.exists() ? Number(configSnap.data().intervaloMinutos) || 30 : 30;
+  return { bloquesPorDia, intervaloMinutos };
+}
+
+// Umbral de días sin sesión para marcar un caso como "sin seguimiento",
+// editable en configuracion.html (antes era un número fijo en el código).
+async function fetchUmbralSeguimiento() {
+  try {
+    const snap = await getDoc(doc(dbPsico, CONFIGURACION_COLLECTION, "general"));
+    const valor = snap.exists() ? Number(snap.data().umbralSeguimientoDias) : NaN;
+    return Number.isInteger(valor) && valor > 0 ? valor : UMBRAL_SEGUIMIENTO_DEFAULT;
+  } catch (err) {
+    console.warn("No se pudo cargar el umbral de seguimiento; se usa el valor por defecto:", err);
+    return UMBRAL_SEGUIMIENTO_DEFAULT;
+  }
+}
+
+// ---------- Capacidad / utilización ----------
+// Cuenta los turnos reservables (excluye bloques apagados y "emergencia",
+// que solo bloquea agenda y nunca es una cita reservable) de un día.
+function contarSlotsBloques(bloques, intervaloMinutos) {
+  return (bloques || [])
+    .filter((b) => b.activo && b.modalidad !== "emergencia")
+    .reduce((total, b) => {
+      const [hI, mI] = b.horaInicio.split(":").map(Number);
+      const [hF, mF] = b.horaFin.split(":").map(Number);
+      const minutos = hF * 60 + mF - (hI * 60 + mI);
+      return total + (minutos > 0 ? Math.floor(minutos / intervaloMinutos) : 0);
+    }, 0);
+}
+
+function contarDiasSemanaEnMes(anio, mes) {
+  const conteo = { lunes: 0, martes: 0, miercoles: 0, jueves: 0, viernes: 0, sabado: 0, domingo: 0 };
+  const totalDias = new Date(anio, mes + 1, 0).getDate();
+  for (let d = 1; d <= totalDias; d++) {
+    conteo[CLAVE_DIA_POR_GETDAY[new Date(anio, mes, d).getDay()]]++;
+  }
+  return conteo;
+}
+
+function calcularCapacidadMes(disponibilidad, anio, mes) {
+  const conteoDias = contarDiasSemanaEnMes(anio, mes);
+  return DIAS_SEMANA.reduce((total, dia) => {
+    const slotsPorDia = contarSlotsBloques(disponibilidad.bloquesPorDia[dia], disponibilidad.intervaloMinutos);
+    return total + slotsPorDia * conteoDias[dia];
+  }, 0);
 }
 
 // ---------- Cálculo ----------
-function calcularIndicadores(sesiones, fichas, totalTrabajadores) {
+function calcularIndicadores(sesiones, fichas, citas, disponibilidad, mesSeleccionado, umbralSeguimientoDias) {
   const ahora = new Date();
   const anio = ahora.getFullYear();
-  const mes = ahora.getMonth();
+  const mes = mesSeleccionado;
 
   const dnisTotales = new Set();
   const dnisMes = new Set();
@@ -123,16 +228,23 @@ function calcularIndicadores(sesiones, fichas, totalTrabajadores) {
   const conteoDiagnosticos = new Map();
   const conteoDerivaciones = new Map();
   const conteoModalidades = new Map();
+  const diagPorArea = new Map(); // area -> Map(diagnostico -> cuenta)
+  const aptitudMes = { apto: 0, restricciones: 0, no_apto: 0 };
 
   sesiones.forEach(({ dni, data }) => {
     dnisTotales.add(dni);
     const fecha = timestampToDate(data.guardadoEn);
+    const ficha = fichas.get(dni);
+    const area = ficha && ficha.area ? ficha.area : "Sin área registrada";
 
     if (fecha && fecha.getFullYear() === anio) {
       evaluadosPorMes[fecha.getMonth()].add(dni);
       if (fecha.getMonth() === mes) {
         atencionesMes++;
         dnisMes.add(dni);
+        if (data.aptitud && Object.prototype.hasOwnProperty.call(aptitudMes, data.aptitud)) {
+          aptitudMes[data.aptitud]++;
+        }
       }
     }
 
@@ -142,13 +254,14 @@ function calcularIndicadores(sesiones, fichas, totalTrabajadores) {
       ultimaPorDni.set(dni, data);
     }
 
-    const ficha = fichas.get(dni);
-    const area = ficha && ficha.area ? ficha.area : "Sin área registrada";
     conteoAreas.set(area, (conteoAreas.get(area) || 0) + 1);
 
     (data.diagnosticos || []).forEach((diag) => {
       if (!diag || !diag.label) return;
       conteoDiagnosticos.set(diag.label, (conteoDiagnosticos.get(diag.label) || 0) + 1);
+      if (!diagPorArea.has(area)) diagPorArea.set(area, new Map());
+      const porArea = diagPorArea.get(area);
+      porArea.set(diag.label, (porArea.get(diag.label) || 0) + 1);
     });
 
     if (data.derivacion) {
@@ -159,21 +272,45 @@ function calcularIndicadores(sesiones, fichas, totalTrabajadores) {
     conteoModalidades.set(modalidadKey, (conteoModalidades.get(modalidadKey) || 0) + 1);
   });
 
+  // Asistencia por mes (de historial_citas, agrupado por la fecha real de la
+  // cita): base tanto de "% Participación" (mes elegido) como de la
+  // tendencia de 12 meses. Solo cuentan las citas con desenlace; "reservada"
+  // (aún pendiente) no suma ni arriba ni abajo.
+  const asistenciaPorMesDetalle = Array.from({ length: 12 }, () => ({ atendidas: 0, reprogramadas: 0, total: 0 }));
+  citas.forEach((cita) => {
+    const estado = cita.estado || "reservada";
+    if (estado !== "atendida" && estado !== "no_asistio" && estado !== "reprogramada") return;
+    const fecha = cita.fecha ? new Date(cita.fecha + "T00:00:00") : null;
+    if (!fecha || Number.isNaN(fecha.getTime()) || fecha.getFullYear() !== anio) return;
+
+    const bucket = asistenciaPorMesDetalle[fecha.getMonth()];
+    bucket.total++;
+    if (estado === "atendida") bucket.atendidas++;
+    else if (estado === "reprogramada") bucket.reprogramadas++;
+  });
+
   // Casos: se clasifican por la ÚLTIMA sesión de cada paciente.
   let casosRiesgo = 0;
   const conteoPrioridades = new Map();
-  const urgentesPorArea = new Map();
+  const casosSinSeguimiento = [];
   ultimaPorDni.forEach((ultima, dni) => {
     if (ultima.riesgo) casosRiesgo++;
     const prioridad = ultima.prioridad || "medium";
     conteoPrioridades.set(prioridad, (conteoPrioridades.get(prioridad) || 0) + 1);
 
-    if (ultima.riesgo || prioridad === "high") {
+    // Casos que requieren seguimiento (riesgo o aptitud restringida) sin una
+    // sesión nueva hace más de umbralSeguimientoDias (configuracion.html).
+    const requiereSeguimiento = ultima.riesgo || ultima.aptitud === "restricciones" || ultima.aptitud === "no_apto";
+    if (!requiereSeguimiento) return;
+    const fechaUltima = timestampToDate(ultima.guardadoEn);
+    if (!fechaUltima) return;
+    const diasSinAtender = Math.floor((ahora - fechaUltima) / (1000 * 60 * 60 * 24));
+    if (diasSinAtender > umbralSeguimientoDias) {
       const ficha = fichas.get(dni);
-      const area = ficha && ficha.area ? ficha.area : "Sin área registrada";
-      urgentesPorArea.set(area, (urgentesPorArea.get(area) || 0) + 1);
+      casosSinSeguimiento.push({ dni, nombre: ficha ? ficha.nombre : "", dias: diasSinAtender });
     }
   });
+  casosSinSeguimiento.sort((a, b) => b.dias - a.dias);
 
   // Edades y género, sobre los pacientes con ficha encontrada.
   const edades = { "18-25": 0, "26-35": 0, "36-45": 0, "46+": 0 };
@@ -196,23 +333,40 @@ function calcularIndicadores(sesiones, fichas, totalTrabajadores) {
     generos.set(genero, (generos.get(genero) || 0) + 1);
   });
 
+  // Diagnóstico más frecuente por área (histórico, top 6 áreas).
+  const diagnosticoTopPorArea = Array.from(diagPorArea.entries())
+    .map(([area, mapa]) => {
+      const top = Array.from(mapa.entries()).sort((a, b) => b[1] - a[1])[0];
+      return { area, diagnostico: top[0], cuenta: top[1] };
+    })
+    .sort((a, b) => b.cuenta - a.cuenta)
+    .slice(0, 6);
+
+  const capacidadMes = calcularCapacidadMes(disponibilidad, anio, mes);
+  const bucketMes = asistenciaPorMesDetalle[mes];
+
   return {
     anio: anio,
     mes: mes,
     atencionesMes: atencionesMes,
     atendidosMes: dnisMes.size,
-    participacion: porcentaje(dnisTotales.size, totalTrabajadores),
+    participacion: porcentaje(bucketMes.atendidas, bucketMes.total),
+    reprogramacion: porcentaje(bucketMes.reprogramadas, bucketMes.total),
+    capacidadMes: capacidadMes,
+    utilizacion: porcentaje(atencionesMes, capacidadMes),
     casosActivos: dnisTotales.size,
     casosRiesgo: casosRiesgo,
-    casosUrgentes: Array.from(urgentesPorArea.values()).reduce((a, b) => a + b, 0),
+    casosSinSeguimiento: casosSinSeguimiento,
     evaluadosPorMes: evaluadosPorMes.map((set) => set.size),
+    asistenciaPorMes: asistenciaPorMesDetalle.map((b) => porcentaje(b.atendidas, b.total)),
     totalSesiones: sesiones.length,
     conteoAreas: conteoAreas,
     conteoPrioridades: conteoPrioridades,
     conteoDiagnosticos: conteoDiagnosticos,
     conteoDerivaciones: conteoDerivaciones,
     conteoModalidades: conteoModalidades,
-    urgentesPorArea: urgentesPorArea,
+    diagnosticoTopPorArea: diagnosticoTopPorArea,
+    aptitudMes: aptitudMes,
     edades: edades,
     generos: generos,
     pacientesConFicha: pacientesConFicha
@@ -221,12 +375,15 @@ function calcularIndicadores(sesiones, fichas, totalTrabajadores) {
 
 // ---------- Render ----------
 function renderKpis(ind) {
-  setTexto("periodo-label", MESES_LARGOS[ind.mes].charAt(0).toUpperCase() + MESES_LARGOS[ind.mes].slice(1) + " " + ind.anio);
+  document.getElementById("mes-selector").value = String(ind.mes);
+  setTexto("periodo-anio", String(ind.anio));
   setTexto("kpi-atenciones-mes", String(ind.atencionesMes));
   setTexto("kpi-participacion", ind.participacion + "%");
   setTexto("kpi-atendidos-mes", String(ind.atendidosMes));
   setTexto("kpi-casos-activos", String(ind.casosActivos));
   setTexto("riskValue", String(ind.casosRiesgo));
+  setTexto("kpi-reprogramacion", ind.reprogramacion + "%");
+  setTexto("kpi-capacidad", ind.utilizacion + "%");
 }
 
 function renderChartMensual(ind) {
@@ -235,32 +392,18 @@ function renderChartMensual(ind) {
   contenedor.innerHTML = "";
 
   const maximo = Math.max(...ind.evaluadosPorMes, 1);
-
   ind.evaluadosPorMes.forEach((valor, mesIdx) => {
-    const columna = document.createElement("div");
-    columna.className = "flex flex-col items-center flex-1 h-full justify-end group min-w-0";
+    contenedor.appendChild(crearColumnaMes(mesIdx, valor, maximo, mesIdx === ind.mes, ""));
+  });
+}
 
-    const barra = document.createElement("div");
-    const esMesActual = mesIdx === ind.mes;
-    barra.className =
-      "w-full rounded-t-lg relative transition-all " +
-      (esMesActual ? "bg-secondary shadow-md" : "bg-secondary/10 group-hover:bg-secondary/20");
-    barra.style.height = valor > 0 ? Math.max(4, (valor / maximo) * 100) + "%" : "2px";
+function renderChartAsistenciaMensual(ind) {
+  const contenedor = document.getElementById("chart-asistencia-mensual");
+  setTexto("chart-asistencia-anio", String(ind.anio));
+  contenedor.innerHTML = "";
 
-    const tooltip = document.createElement("div");
-    tooltip.className =
-      "absolute -top-8 left-1/2 -translate-x-1/2 bg-primary text-white text-[10px] px-2 py-1 rounded transition-opacity " +
-      (esMesActual ? "" : "opacity-0 group-hover:opacity-100");
-    tooltip.textContent = String(valor);
-    barra.appendChild(tooltip);
-
-    const etiqueta = document.createElement("span");
-    etiqueta.className = "mt-4 text-[11px] truncate " + (esMesActual ? "font-bold text-primary" : "text-on-surface-variant font-medium");
-    etiqueta.textContent = MESES_CORTOS[mesIdx];
-
-    columna.appendChild(barra);
-    columna.appendChild(etiqueta);
-    contenedor.appendChild(columna);
+  ind.asistenciaPorMes.forEach((valor, mesIdx) => {
+    contenedor.appendChild(crearColumnaMes(mesIdx, valor, 100, mesIdx === ind.mes, "%"));
   });
 }
 
@@ -334,6 +477,55 @@ function renderChartPrioridades(ind) {
   setTexto("donut-center-label", mayor.label);
 }
 
+function renderAptitudMes(ind) {
+  const donut = document.getElementById("chart-aptitud-donut");
+  const leyenda = document.getElementById("chart-aptitud-legend");
+  leyenda.innerHTML = "";
+
+  const total = ind.aptitudMes.apto + ind.aptitudMes.restricciones + ind.aptitudMes.no_apto;
+  if (total === 0) {
+    mensajeVacio(leyenda, "Sin determinaciones de aptitud en el mes elegido.");
+    donut.style.background = "none";
+    setTexto("aptitud-donut-value", "0");
+    setTexto("aptitud-donut-label", "Casos");
+    return;
+  }
+
+  const orden = ["apto", "restricciones", "no_apto"];
+  let acumulado = 0;
+  const segmentos = [];
+
+  orden.forEach((clave) => {
+    const cuenta = ind.aptitudMes[clave];
+    if (cuenta === 0) return;
+    const meta = APTITUD_META[clave];
+    const pct = (cuenta / total) * 100;
+    segmentos.push(meta.color + " " + acumulado + "% " + (acumulado + pct) + "%");
+    acumulado += pct;
+
+    const fila = document.createElement("div");
+    fila.className = "flex items-center gap-3";
+    const punto = document.createElement("span");
+    punto.className = "w-4 h-4 rounded flex-shrink-0";
+    punto.style.backgroundColor = meta.color;
+    const textos = document.createElement("div");
+    textos.className = "flex-1 flex justify-between text-body-md font-medium";
+    const nombre = document.createElement("span");
+    nombre.textContent = meta.label;
+    const valor = document.createElement("span");
+    valor.textContent = cuenta + " (" + porcentaje(cuenta, total) + "%)";
+    textos.appendChild(nombre);
+    textos.appendChild(valor);
+    fila.appendChild(punto);
+    fila.appendChild(textos);
+    leyenda.appendChild(fila);
+  });
+
+  donut.style.background = "conic-gradient(" + segmentos.join(", ") + ")";
+  setTexto("aptitud-donut-value", String(total));
+  setTexto("aptitud-donut-label", "Casos");
+}
+
 function renderDiagnosticos(ind) {
   const contenedor = document.getElementById("psychContent");
   contenedor.innerHTML = "";
@@ -372,30 +564,65 @@ function renderDiagnosticos(ind) {
     });
 }
 
-function renderUrgentesPorArea(ind) {
-  const contenedor = document.getElementById("hrContent");
+function renderDiagnosticosPorArea(ind) {
+  const contenedor = document.getElementById("chart-diag-area");
   contenedor.innerHTML = "";
 
-  const nota = document.createElement("p");
-  nota.className = "text-xs text-on-surface-variant mb-2";
-  nota.textContent = "Casos urgentes por área (conteo, sin nombres ni motivos)";
-  contenedor.appendChild(nota);
-
-  if (ind.urgentesPorArea.size === 0) {
-    const vacio = document.createElement("p");
-    vacio.className = "text-body-md text-on-surface-variant";
-    vacio.textContent = "No hay casos urgentes en este momento.";
-    contenedor.appendChild(vacio);
+  if (ind.diagnosticoTopPorArea.length === 0) {
+    mensajeVacio(contenedor, "Aún no hay suficientes datos.");
     return;
   }
 
-  const maximo = Math.max(...ind.urgentesPorArea.values());
-  Array.from(ind.urgentesPorArea.entries())
-    .sort((a, b) => b[1] - a[1])
-    .forEach(([area, cuenta]) => {
-      const etiquetaCuenta = cuenta === 1 ? "1 caso" : cuenta + " casos";
-      contenedor.appendChild(crearFilaBarra(area, etiquetaCuenta, (cuenta / maximo) * 100, "bg-error/70"));
-    });
+  ind.diagnosticoTopPorArea.forEach(({ area, diagnostico, cuenta }) => {
+    const fila = document.createElement("div");
+    fila.className = "flex items-center justify-between gap-3 p-3 bg-surface-container-low rounded-lg border border-outline-variant/30";
+
+    const izquierda = document.createElement("div");
+    izquierda.className = "min-w-0";
+    const areaEl = document.createElement("p");
+    areaEl.className = "text-label-md font-bold text-on-surface-variant uppercase tracking-wide truncate";
+    areaEl.textContent = area;
+    const diagEl = document.createElement("p");
+    diagEl.className = "text-body-md font-semibold truncate";
+    diagEl.textContent = diagnostico;
+    izquierda.appendChild(areaEl);
+    izquierda.appendChild(diagEl);
+
+    const cuentaEl = document.createElement("span");
+    cuentaEl.className = "text-body-md font-bold text-secondary flex-shrink-0";
+    cuentaEl.textContent = String(cuenta);
+
+    fila.appendChild(izquierda);
+    fila.appendChild(cuentaEl);
+    contenedor.appendChild(fila);
+  });
+}
+
+function renderCasosSinSeguimiento(ind) {
+  const contenedor = document.getElementById("chart-seguimiento");
+  contenedor.innerHTML = "";
+
+  if (ind.casosSinSeguimiento.length === 0) {
+    mensajeVacio(contenedor, "No hay casos pendientes de seguimiento.");
+    return;
+  }
+
+  ind.casosSinSeguimiento.slice(0, 8).forEach((caso) => {
+    const fila = document.createElement("div");
+    fila.className = "flex items-center justify-between gap-3 p-3 bg-surface-container-low rounded-lg border border-outline-variant/30";
+
+    const nombre = document.createElement("span");
+    nombre.className = "text-body-md font-medium truncate";
+    nombre.textContent = caso.nombre || "DNI " + caso.dni;
+
+    const dias = document.createElement("span");
+    dias.className = "text-label-md font-bold text-error flex-shrink-0";
+    dias.textContent = caso.dias + " días";
+
+    fila.appendChild(nombre);
+    fila.appendChild(dias);
+    contenedor.appendChild(fila);
+  });
 }
 
 function renderEdadesYGenero(ind) {
@@ -465,85 +692,74 @@ function renderDerivaciones(ind) {
     .sort((a, b) => b[1] - a[1])
     .forEach(([derivacion, cuenta]) => {
       const pct = porcentaje(cuenta, total);
-      const color = derivacion.includes("Urgente")
-        ? "bg-error"
-        : derivacion === "No requerida"
-          ? "bg-surface-container-highest"
-          : "bg-secondary";
+      const color = derivacion === "No requerida" ? "bg-surface-container-highest" : "bg-secondary";
       contenedor.appendChild(crearFilaBarra(derivacion, pct + "%", pct, color));
     });
 }
 
-// ---------- Toggle Psicólogo (V8) / RRHH (V10) ----------
-let indicadores = null;
-
-function switchView(view) {
-  const psychBtn = document.getElementById("viewPsych");
-  const hrBtn = document.getElementById("viewHR");
-  const psychContent = document.getElementById("psychContent");
-  const hrContent = document.getElementById("hrContent");
-  const riskCasesCard = document.getElementById("riskCasesCard");
-
-  const esPsych = view === "psych";
-  const activo = esPsych ? psychBtn : hrBtn;
-  const inactivo = esPsych ? hrBtn : psychBtn;
-
-  activo.classList.add("bg-secondary", "text-on-secondary", "shadow-sm");
-  activo.classList.remove("text-on-surface-variant", "hover:bg-surface-container-high");
-  inactivo.classList.remove("bg-secondary", "text-on-secondary", "shadow-sm");
-  inactivo.classList.add("text-on-surface-variant", "hover:bg-surface-container-high");
-
-  psychContent.classList.toggle("hidden", !esPsych);
-  hrContent.classList.toggle("hidden", esPsych);
-
-  setTexto("dynamicTitle", esPsych ? "Diagnósticos Más Frecuentes" : "Casos Urgentes por Área");
-  setTexto("viewTitle", esPsych ? "Desempeño Operativo" : "Salud Organizacional");
-  setTexto("viewSubtitle", esPsych ? "Resumen Operativo Mensual" : "Analítica Anonimizada (sin nombres ni diagnósticos)");
-
-  riskCasesCard.classList.toggle("bg-red-50/50", esPsych);
-  riskCasesCard.classList.toggle("border-red-100", esPsych);
-  riskCasesCard.classList.toggle("bg-secondary/5", !esPsych);
-  riskCasesCard.classList.toggle("border-secondary/20", !esPsych);
-  setTexto("riskLabel", esPsych ? "Casos de Riesgo" : "Casos Urgentes");
-  if (indicadores) {
-    setTexto("riskValue", String(esPsych ? indicadores.casosRiesgo : indicadores.casosUrgentes));
-  }
+function renderTodo(ind) {
+  renderKpis(ind);
+  renderChartMensual(ind);
+  renderChartAsistenciaMensual(ind);
+  renderChartAreas(ind);
+  renderChartPrioridades(ind);
+  renderAptitudMes(ind);
+  renderDiagnosticos(ind);
+  renderDiagnosticosPorArea(ind);
+  renderCasosSinSeguimiento(ind);
+  renderEdadesYGenero(ind);
+  renderModalidades(ind);
+  renderDerivaciones(ind);
 }
-
-document.getElementById("viewPsych").addEventListener("click", () => switchView("psych"));
-document.getElementById("viewHR").addEventListener("click", () => switchView("hr"));
 
 // Exportar: usa la impresión del navegador (permite guardar como PDF el
 // tablero tal como se ve), hasta que exista un generador de reporte formal.
 document.getElementById("export-btn").addEventListener("click", () => window.print());
 
 // ---------- Inicio (tras confirmar sesión, para que fichas no rebote) ----------
+// Los datos crudos se guardan aquí; cambiar el mes solo recalcula, sin volver
+// a leer Firestore.
+let datosGlobales = null;
+const mesSelector = document.getElementById("mes-selector");
+
+function recalcularYRenderizar() {
+  if (!datosGlobales) return;
+  const mesSeleccionado = Number(mesSelector.value);
+  renderTodo(
+    calcularIndicadores(
+      datosGlobales.sesiones,
+      datosGlobales.fichas,
+      datosGlobales.citas,
+      datosGlobales.disponibilidad,
+      mesSeleccionado,
+      datosGlobales.umbralSeguimiento
+    )
+  );
+}
+
+mesSelector.addEventListener("change", recalcularYRenderizar);
+
 async function inicializar() {
   try {
     const sesiones = await fetchSesiones();
     const dnis = Array.from(new Set(sesiones.map((s) => s.dni)));
 
-    const [fichas, totalTrabajadores] = await Promise.all([
+    const [fichas, citas, disponibilidad, umbralSeguimiento] = await Promise.all([
       dnis.length ? fetchFichasPorDnis(dnis) : Promise.resolve(new Map()),
-      fetchTotalTrabajadores()
+      fetchCitas(),
+      fetchDisponibilidadCompleta(),
+      fetchUmbralSeguimiento()
     ]);
 
-    indicadores = calcularIndicadores(sesiones, fichas, totalTrabajadores);
-
-    renderKpis(indicadores);
-    renderChartMensual(indicadores);
-    renderChartAreas(indicadores);
-    renderChartPrioridades(indicadores);
-    renderDiagnosticos(indicadores);
-    renderUrgentesPorArea(indicadores);
-    renderEdadesYGenero(indicadores);
-    renderModalidades(indicadores);
-    renderDerivaciones(indicadores);
+    datosGlobales = { sesiones, fichas, citas, disponibilidad, umbralSeguimiento };
+    mesSelector.value = String(new Date().getMonth());
+    recalcularYRenderizar();
   } catch (err) {
     console.error("Error al cargar los indicadores:", err);
-    ["chart-mensual", "chart-areas", "chart-prioridades-legend", "psychContent", "chart-edades", "chart-derivaciones"].forEach(
-      (id) => mensajeVacio(document.getElementById(id), "No se pudieron cargar los datos.")
-    );
+    [
+      "chart-mensual", "chart-asistencia-mensual", "chart-areas", "chart-prioridades-legend",
+      "psychContent", "chart-diag-area", "chart-seguimiento", "chart-edades", "chart-derivaciones"
+    ].forEach((id) => mensajeVacio(document.getElementById(id), "No se pudieron cargar los datos."));
   }
 }
 

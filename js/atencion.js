@@ -18,7 +18,61 @@ import {
   deleteDoc,
   serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-import { dbPsico, PACIENTES_COLLECTION } from "./fb-psico.js";
+import { dbPsico, PACIENTES_COLLECTION, CONFIGURACION_COLLECTION, registrarHistorialCita } from "./fb-psico.js";
+
+// Catálogos editables desde configuracion.html; estos son solo el respaldo
+// por si el documento de Firestore aún no existe (primera vez).
+const DERIVACIONES_DEFAULT = ["No requerida", "Psiquiatría", "Psicologia", "Neuropsicologia"];
+const ACCIONES_DEFAULT = [
+  "Recomendaciones compartidas verbalmente",
+  "Envío de material psicoeducativo digital",
+  "Pruebas psicométricas aplicadas"
+];
+
+// Llena el <select> de Derivación y las casillas de Acciones Realizadas con
+// el catálogo guardado en configuracion.html. Se espera a que termine antes
+// de precargar cualquier sesión (borrador o edición), para que los valores
+// guardados encuentren su opción ya creada en el DOM.
+async function cargarCatalogos() {
+  let derivaciones = DERIVACIONES_DEFAULT;
+  let acciones = ACCIONES_DEFAULT;
+
+  try {
+    const snap = await getDoc(doc(dbPsico, CONFIGURACION_COLLECTION, "catalogos"));
+    if (snap.exists()) {
+      const data = snap.data();
+      if (Array.isArray(data.derivaciones) && data.derivaciones.length) derivaciones = data.derivaciones;
+      if (Array.isArray(data.acciones) && data.acciones.length) acciones = data.acciones;
+    }
+  } catch (err) {
+    console.warn("No se pudo cargar el catálogo; se usan las opciones por defecto:", err);
+  }
+
+  var derivacionSelect = document.getElementById("derivacion-select");
+  derivacionSelect.innerHTML = "";
+  derivaciones.forEach(function (texto) {
+    var option = document.createElement("option");
+    option.textContent = texto;
+    derivacionSelect.appendChild(option);
+  });
+
+  var accionesContenedor = document.getElementById("acciones-checkboxes");
+  accionesContenedor.innerHTML = "";
+  acciones.forEach(function (texto) {
+    var label = document.createElement("label");
+    label.className = "flex items-center gap-3 cursor-pointer group";
+    var checkbox = document.createElement("input");
+    checkbox.className = "w-5 h-5 rounded border-outline-variant text-secondary focus:ring-secondary";
+    checkbox.type = "checkbox";
+    checkbox.value = texto;
+    var span = document.createElement("span");
+    span.className = "text-body-md group-hover:text-primary transition-colors";
+    span.textContent = texto;
+    label.appendChild(checkbox);
+    label.appendChild(span);
+    accionesContenedor.appendChild(label);
+  });
+}
 
 const patientInitials = document.getElementById("patient-initials");
 const patientName = document.getElementById("patient-name");
@@ -87,7 +141,7 @@ async function fetchHistorialSesiones(dniValue) {
   const historialQuery = query(sesionesCollection(dniValue), orderBy("guardadoEn", "desc"));
   const snap = await getDocs(historialQuery);
   return snap.docs.map(function (d) {
-    return d.data();
+    return Object.assign({ id: d.id }, d.data());
   });
 }
 
@@ -130,16 +184,25 @@ function buildHistorialItem(data) {
       "<p><strong>Motivo:</strong> " + (data.motivoConsulta || "—") + "</p>" +
       "<p><strong>Evolución:</strong> " + (data.evolucion || "—") + "</p>" +
       "<p><strong>Frecuencia:</strong> " + (data.frecuencia || "—") + " · <strong>Prioridad:</strong> " + (data.prioridad || "—") + "</p>" +
-      "<p><strong>Aptitud:</strong> " + (data.aptitud || "—") + " · <strong>Seguimiento:</strong> " + (data.seguimiento || data.tratamiento || "—") + "</p>" +
-      "<p><strong>Restricciones:</strong> " + (data.restricciones || "—") + "</p>" +
+      "<p><strong>Aptitud:</strong> " + (data.aptitud || "—") + "</p>" +
       "<p><strong>Derivación:</strong> " + (data.derivacion || "—") + "</p>" +
       "<p><strong>Diagnósticos:</strong> " + diagnosticosTexto + "</p>" +
       "<p><strong>Acciones realizadas:</strong> " + accionesTexto + "</p>" +
       "<p><strong>Resultados de pruebas:</strong> " + (data.resultadosPruebas || "—") + "</p>" +
+      '<div class="pt-2">' +
+        '<button type="button" class="historial-edit-btn flex items-center gap-2 text-secondary font-semibold text-body-md hover:underline">' +
+          '<span class="material-symbols-outlined text-lg">edit</span> Editar esta sesión' +
+        "</button>" +
+      "</div>" +
     "</div>";
 
   item.querySelector(".historial-item-toggle").addEventListener("click", function () {
     item.lastElementChild.classList.toggle("hidden");
+  });
+
+  item.querySelector(".historial-edit-btn").addEventListener("click", function (e) {
+    e.stopPropagation();
+    iniciarEdicionSesion(data);
   });
 
   return item;
@@ -248,7 +311,9 @@ onAuthStateChanged(auth, (user) => {
     patientName.textContent = "Inicia sesión para ver los datos del paciente";
     return;
   }
-  loadPatientData(dni);
+  // El catálogo debe estar en el DOM antes de precargar cualquier sesión
+  // (borrador o edición), para que el valor guardado encuentre su <option>.
+  cargarCatalogos().finally(() => loadPatientData(dni));
 });
 
 // Resaltar el caso de inmediato cuando se marca una señal de riesgo.
@@ -532,6 +597,12 @@ async function guardarYAgendarSiguiente() {
     // La cita de este paciente pasa a "atendida" (la agenda la pinta en gris).
     try {
       await setDoc(doc(dbPsico, PACIENTES_COLLECTION, dni), { estado: "atendida" }, { merge: true });
+      registrarHistorialCita(dni, {
+        estado: "atendida",
+        fecha: citaActual && citaActual.fecha ? citaActual.fecha : null,
+        hora: citaActual && citaActual.hora ? citaActual.hora : null,
+        modalidad: citaActual && citaActual.modalidad ? citaActual.modalidad : null
+      }).catch((err) => console.warn("No se pudo registrar el historial de la cita:", err));
     } catch (estadoErr) {
       // La sesión ya quedó guardada; si esto falla solo queda mal el color
       // de la tarjeta en la agenda, no se pierde información clínica.
@@ -580,7 +651,10 @@ function limpiarFormulario() {
   document.getElementById("evolucion-textarea").value = "";
   var aptitudMarcada = document.querySelector('input[name="aptitud"]:checked');
   if (aptitudMarcada) aptitudMarcada.checked = false;
-  document.getElementById("derivacion-select").selectedIndex = 0;
+  // "No requerida" es la opción fija del catálogo (configuracion.html no
+  // permite borrarla); se selecciona por texto en vez de por índice porque
+  // el admin puede reordenar el catálogo.
+  document.getElementById("derivacion-select").value = "No requerida";
   diagnosisList.innerHTML = "";
   document.querySelectorAll('#acciones-list input[type="checkbox"]').forEach(function (cb) {
     cb.checked = false;
@@ -604,3 +678,95 @@ cancelBtn.addEventListener("click", async function () {
     }
   }
 });
+
+// ---------- Editar una sesión del historial ----------
+// Reutiliza el mismo formulario: al tocar "Editar esta sesión" se precarga
+// con renderFormFromSesion() y el pie de página cambia a un único botón
+// "Actualizar" que sobrescribe ese mismo documento (no crea uno nuevo ni
+// toca el borrador-actual).
+var updateSessionBtn = document.getElementById("update-session-btn");
+var editModeBanner = document.getElementById("edit-mode-banner");
+var editModeFecha = document.getElementById("edit-mode-fecha");
+var editModeCancel = document.getElementById("edit-mode-cancel");
+
+var sesionEnEdicionId = null;
+var sesionEnEdicionMeta = null; // { estado, modalidad } del documento original, para no perderlos al actualizar
+
+function salirModoEdicion() {
+  sesionEnEdicionId = null;
+  sesionEnEdicionMeta = null;
+  editModeBanner.classList.add("hidden");
+  editModeBanner.classList.remove("flex");
+  cancelBtn.classList.remove("hidden");
+  saveDraftBtn.classList.remove("hidden");
+  saveFinalBtn.classList.remove("hidden");
+  updateSessionBtn.classList.add("hidden");
+}
+
+function iniciarEdicionSesion(data) {
+  if (formularioSucio && !window.confirm("Hay cambios sin guardar en el formulario. ¿Deseas descartarlos y editar esta sesión?")) {
+    return;
+  }
+
+  sesionEnEdicionId = data.id;
+  sesionEnEdicionMeta = { estado: data.estado || "completada", modalidad: data.modalidad || null };
+
+  renderFormFromSesion(data);
+  document.getElementById("draft-indicator").classList.add("hidden");
+
+  editModeFecha.textContent = formatFechaGuardado(data.guardadoEn);
+  editModeBanner.classList.remove("hidden");
+  editModeBanner.classList.add("flex");
+
+  cancelBtn.classList.add("hidden");
+  saveDraftBtn.classList.add("hidden");
+  saveFinalBtn.classList.add("hidden");
+  updateSessionBtn.classList.remove("hidden");
+
+  formularioSucio = false;
+  formulario.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+editModeCancel.addEventListener("click", function () {
+  limpiarFormulario();
+  salirModoEdicion();
+});
+
+async function actualizarSesion() {
+  if (!dni || !sesionEnEdicionId) return;
+
+  var datos = collectFormData();
+  if (!datos.motivoConsulta.trim() && !datos.evolucion.trim()) {
+    alert("Registra al menos el motivo de consulta o la evolución antes de actualizar.");
+    return;
+  }
+
+  var originalHtml = updateSessionBtn.innerHTML;
+  updateSessionBtn.disabled = true;
+  updateSessionBtn.textContent = "Actualizando...";
+
+  try {
+    await setDoc(
+      doc(sesionesCollection(dni), sesionEnEdicionId),
+      Object.assign({}, datos, {
+        estado: sesionEnEdicionMeta.estado,
+        modalidad: sesionEnEdicionMeta.modalidad
+      }),
+      { merge: true }
+    );
+
+    formularioSucio = false;
+    limpiarFormulario();
+    salirModoEdicion();
+    alert("Sesión actualizada.");
+    await refreshHistorial(dni);
+  } catch (err) {
+    console.error("Error al actualizar la sesión:", err);
+    alert("No se pudo actualizar la sesión.");
+  } finally {
+    updateSessionBtn.disabled = false;
+    updateSessionBtn.innerHTML = originalHtml;
+  }
+}
+
+updateSessionBtn.addEventListener("click", actualizarSesion);

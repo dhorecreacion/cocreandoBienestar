@@ -3,7 +3,7 @@
 // autenticar contra el proyecto de fb-psico.js. El resto de la ficha
 // (nombre, teléfono, área, modalidad) se completa más adelante, cuando esa
 // parte del flujo se conecte.
-import { dbPsico, PACIENTES_COLLECTION, DISPONIBILIDAD_COLLECTION, MODALIDADES } from "./fb-psico.js";
+import { dbPsico, PACIENTES_COLLECTION, DISPONIBILIDAD_COLLECTION, MODALIDADES, registrarHistorialCita } from "./fb-psico.js";
 import {
   doc,
   setDoc,
@@ -13,7 +13,7 @@ import {
   query,
   where
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-import { auth } from "./firebase-config.js";
+import { auth, ADMIN_EMAIL } from "./firebase-config.js";
 import { signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
 const dniInput = document.getElementById("dni");
@@ -362,6 +362,19 @@ confirmBtn.addEventListener("click", async () => {
       { merge: true }
     );
 
+    try {
+      await registrarHistorialCita(dni, {
+        estado: "reservada",
+        fecha: selectedFecha,
+        hora: selectedHora,
+        modalidad: selectedModalidad
+      });
+    } catch (historialErr) {
+      // La reserva ya quedó guardada; si esto falla solo se pierde un punto
+      // del historial de tendencia, no la reserva en sí.
+      console.warn("No se pudo registrar el historial de la cita:", historialErr);
+    }
+
     horasOcupadas.add(`${selectedFecha}|${selectedHora}`);
     summaryDni.textContent = dni;
     summaryDatetime.textContent = `${selectedFechaLabel}, ${selectedHora}`;
@@ -424,6 +437,14 @@ async function submitAdminLogin() {
 
   if (!email || !password) {
     adminLoginError.textContent = "Ingresa tu correo y contraseña.";
+    adminLoginError.classList.remove("hidden");
+    return;
+  }
+
+  // Solo el correo autorizado puede entrar al panel; se corta acá antes de
+  // gastar un intento contra Firebase con cualquier otra cuenta.
+  if (email.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) {
+    adminLoginError.textContent = "Correo o contraseña incorrectos.";
     adminLoginError.classList.remove("hidden");
     return;
   }

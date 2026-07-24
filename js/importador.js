@@ -14,8 +14,16 @@
 // - Los diagnósticos aceptan CUALQUIER código CIE-10 (con o sin punto) y son
 //   opcionales; sus nombres se completan automáticamente consultando el
 //   catálogo público de notasalud.com al validar el archivo.
-import { dbPsico, PACIENTES_COLLECTION } from "./fb-psico.js";
-import { doc, writeBatch, Timestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { dbPsico, PACIENTES_COLLECTION, CONFIGURACION_COLLECTION } from "./fb-psico.js";
+import { fetchFichasPorDnis } from "./fichas-cache.js";
+import {
+  doc,
+  getDoc,
+  writeBatch,
+  Timestamp,
+  collectionGroup,
+  getDocs
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 // Columnas vigentes: "seguimiento" y "restricciones" ya no forman parte de la
 // ficha de atención; si el archivo trae columnas extra, se ignoran.
@@ -41,6 +49,44 @@ const PRIORIDADES = { baja: "low", media: "medium", alta: "high", low: "low", me
 const APTITUDES = { apto: "apto", restricciones: "restricciones", "apto con restricciones": "restricciones", "no apto": "no_apto", no_apto: "no_apto" };
 const MODALIDADES_ALIAS = { presencial: "presencial", virtual: "virtual", video: "virtual", llamada: "llamada", telefono: "llamada", "teléfono": "llamada" };
 
+// Catálogo de derivaciones: editable desde configuracion.html (colección
+// "configuracion", doc "catalogos"). Debe coincidir EXACTAMENTE con las
+// opciones de #derivacion-select en atencion.html: el tablero de indicadores
+// agrupa el gráfico "Derivaciones" por el texto literal, así que un valor
+// distinto crearía una barra aparte. Este es solo el respaldo por si el
+// documento de Firestore aún no existe.
+const DERIVACIONES_DEFAULT = ["No requerida", "Psiquiatría", "Psicologia", "Neuropsicologia"];
+
+// Quita tildes y pasa a minúsculas, para que la validación no dependa de
+// mayúsculas/acentos al escribir en el Excel.
+function normalizarTexto(texto) {
+  return texto.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+}
+
+function construirMapaDerivaciones(lista) {
+  const mapa = {};
+  lista.forEach((texto) => {
+    mapa[normalizarTexto(texto)] = texto;
+  });
+  return mapa;
+}
+
+// Se refresca antes de cada validación de archivo y antes de generar la
+// plantilla, con el catálogo real; mientras tanto queda con el respaldo.
+let derivacionesValidas = construirMapaDerivaciones(DERIVACIONES_DEFAULT);
+
+async function obtenerCatalogoDerivaciones() {
+  try {
+    const snap = await getDoc(doc(dbPsico, CONFIGURACION_COLLECTION, "catalogos"));
+    if (snap.exists() && Array.isArray(snap.data().derivaciones) && snap.data().derivaciones.length) {
+      return snap.data().derivaciones;
+    }
+  } catch (err) {
+    console.warn("No se pudo cargar el catálogo de derivaciones; se usan las opciones por defecto:", err);
+  }
+  return DERIVACIONES_DEFAULT;
+}
+
 const importToggle = document.getElementById("import-toggle");
 const importBody = document.getElementById("import-body");
 const importChevron = document.getElementById("import-chevron");
@@ -49,6 +95,16 @@ const importFile = document.getElementById("import-file");
 const importStatus = document.getElementById("import-status");
 const importErrors = document.getElementById("import-errors");
 const importBtn = document.getElementById("import-btn");
+const downloadReportBtn = document.getElementById("download-report-btn");
+
+// Mismo orden que COLUMNAS, más los datos de identidad que salen de la ficha
+// social (proyecto autenticado): así el reporte se puede leer solo, sin
+// tener que cruzar el DNI a mano contra otro sistema.
+const COLUMNAS_REPORTE = [
+  "dni", "nombre", "area", "cargo", "sede", "fecha", "hora", "estado",
+  "modalidad", "riesgo", "prioridad", "frecuencia", "motivo", "evolucion",
+  "aptitud", "derivacion", "diagnosticos", "acciones", "resultados"
+];
 
 let sesionesValidas = [];
 
@@ -65,23 +121,35 @@ function sheetJsDisponible() {
   return true;
 }
 
+// Hoja de Excel con el ancho de columna calculado a partir del encabezado
+// (usado tanto por la plantilla como por el reporte maestro).
+function hojaConAnchos(filas, columnas) {
+  const hoja = XLSX.utils.aoa_to_sheet(filas);
+  hoja["!cols"] = columnas.map((col) => ({ wch: Math.max(col.length + 2, 14) }));
+  return hoja;
+}
+
+// Filas fijas de ejemplo: casos ficticios (DNI y datos personales inventados)
+// que ilustran la variedad de valores válidos por columna — distintas
+// modalidades, prioridades, aptitudes, derivaciones (incluida cada una de
+// las 3 no-default), varias sesiones para un mismo DNI, diagnósticos simples
+// y múltiples, y filas con campos opcionales vacíos.
+const FILAS_EJEMPLO = [
+  ["10000001", "2026-05-13", "18:00", "virtual", "no", "media", "Semanal", "", "Se brindan recomendaciones generales.", "apto", "", "", "", ""],
+  ["10000002", "2026-05-13", "10:00", "llamada", "no", "media", "a demanda", "Refiere afectación emocional por el fallecimiento de un familiar cercano.", "Se brindan recomendaciones para el manejo del proceso de duelo.", "no apto", "", "", "", ""],
+  ["10000003", "2026-06-03", "10:00", "llamada", "no", "media", "Semanal", "Refiere sentirse afectado emocionalmente por una pérdida reciente; primera vez que atraviesa una situación así.", "Se brindan recomendaciones para el manejo del duelo; se le informa sobre grupos de apoyo voluntarios.", "no apto", "", "", "", ""],
+  ["10000004", "2026-05-06", "08:00", "presencial", "no", "baja", "a demanda", "Refiere síntomas físicos de ansiedad y preocupación por su salud.", "Se brindan recomendaciones para el manejo de la ansiedad.", "apto", "", "", "", ""],
+  ["10000005", "2026-06-23", "14:40", "llamada", "no", "media", "Quincenal", "Sesión de seguimiento; se registran avances y pendientes.", "Se revisan los acuerdos de la sesión anterior y se ajusta el plan de seguimiento.", "no apto", "Neuropsicologia", "R45.8;F43.8", "Pruebas psicométricas aplicadas", "Se aplican pruebas complementarias."],
+  ["10000005", "2026-07-24", "21:59", "", "si", "alta", "A demanda", "Caso de alta prioridad; requiere seguimiento inmediato.", "Se registra intervención de urgencia y coordinación con derivación especializada.", "no apto", "Psiquiatría", "F43.1", "Pruebas psicométricas aplicadas", "Pendiente de cierre."],
+  ["10000006", "2026-06-23", "15:00", "llamada", "no", "baja", "Semanal", "Refiere afectación emocional por el fallecimiento de un familiar.", "Se le recomienda tomarse un tiempo para procesar la pérdida junto a su familia.", "apto", "Psicologia", "F41.2", "Recomendaciones compartidas verbalmente;Pruebas psicométricas aplicadas", "En proceso de cierre y codificación."]
+];
+
 // ---------- Plantilla Excel (hoja de datos + hoja de guía) ----------
-downloadTemplateBtn.addEventListener("click", () => {
+downloadTemplateBtn.addEventListener("click", async () => {
   if (!sheetJsDisponible()) return;
 
-  const filasSesiones = [
-    COLUMNAS,
-    [
-      "72186498", "2026-05-14", "10:30", "presencial", "no", "media", "Semanal",
-      "Estrés laboral por carga de trabajo", "Se aplican técnicas de respiración; buena respuesta",
-      "apto", "No requerida", "F43.2", "Recomendaciones compartidas verbalmente", ""
-    ],
-    [
-      "75782502", "2026-06-02", "15:00", "virtual", "si", "alta", "Quincenal",
-      "Dificultades de sueño y ansiedad", "Síntomas persistentes, se deriva a especialista",
-      "restricciones", "Psiquiatría (Rutina)", "F41.1;F51.0", "Pruebas psicométricas aplicadas", "BDI-II: 24 puntos"
-    ]
-  ];
+  const filasSesiones = [COLUMNAS, ...FILAS_EJEMPLO];
+  const catalogoDerivaciones = await obtenerCatalogoDerivaciones();
 
   const filasGuia = [
     ["Columna", "¿Obligatorio?", "Qué poner"],
@@ -95,18 +163,18 @@ downloadTemplateBtn.addEventListener("click", () => {
     ["motivo", "No", "Texto libre: motivo de consulta."],
     ["evolucion", "No", "Texto libre: evolución y observaciones."],
     ["aptitud", "No", "apto / restricciones / no_apto."],
-    ["derivacion", "No", "No requerida, Psiquiatría (Urgente), Psiquiatría (Rutina), Neurología, Medicina General."],
+    ["derivacion", "No", catalogoDerivaciones.join(", ") + " (vacío = No requerida). Debe ser una de estas opciones exactas: son las mismas del catálogo editable en Configuración."],
     ["diagnosticos", "No", "Cualquier código del catálogo CIE-10, con o sin punto (F41.1 o F411), separados por ; — el nombre se completa automáticamente al importar. Puede quedar vacío."],
     ["acciones", "No", "Separadas por ; — Ej.: Recomendaciones compartidas verbalmente; Pruebas psicométricas aplicadas."],
     ["resultados", "No", "Texto libre. Ej.: BDI-II: 24 puntos."],
     [],
     ["Nota", "", "Una fila = una sesión. Si subes el mismo archivo dos veces, las sesiones se sobreescriben (no se duplican)."],
+    ["Nota", "", "Las filas de ejemplo son ficticias (DNI y datos inventados) — bórralas y reemplázalas por los datos reales antes de subir el archivo."],
     ["Nota", "", "Columnas adicionales (p. ej. seguimiento o restricciones de plantillas anteriores) se ignoran."]
   ];
 
   const libro = XLSX.utils.book_new();
-  const hojaSesiones = XLSX.utils.aoa_to_sheet(filasSesiones);
-  hojaSesiones["!cols"] = COLUMNAS.map((col) => ({ wch: Math.max(col.length + 2, 14) }));
+  const hojaSesiones = hojaConAnchos(filasSesiones, COLUMNAS);
   const hojaGuia = XLSX.utils.aoa_to_sheet(filasGuia);
   hojaGuia["!cols"] = [{ wch: 14 }, { wch: 14 }, { wch: 95 }];
 
@@ -194,6 +262,13 @@ function validarFila(celdas, indices, numeroFila) {
     return { error: `Fila ${numeroFila}: aptitud "${valor("aptitud")}" no válida (apto / restricciones / no_apto).` };
   }
 
+  const derivacionTexto = normalizarTexto(valor("derivacion"));
+  if (derivacionTexto && !derivacionesValidas[derivacionTexto]) {
+    return {
+      error: `Fila ${numeroFila}: derivación "${valor("derivacion")}" no válida (${Object.values(derivacionesValidas).join(" / ")}).`
+    };
+  }
+
   // Diagnósticos: campo OPCIONAL. Si viene, cada código debe tener forma
   // CIE-10 (letra + números, con o sin punto). El nombre se resuelve después.
   const codigosDiagnostico = valor("diagnosticos").split(";").map((c) => c.trim()).filter(Boolean);
@@ -224,7 +299,7 @@ function validarFila(celdas, indices, numeroFila) {
         motivoConsulta: valor("motivo"),
         evolucion: valor("evolucion"),
         aptitud: APTITUDES[aptitudTexto] || null,
-        derivacion: valor("derivacion"),
+        derivacion: derivacionTexto ? derivacionesValidas[derivacionTexto] : "No requerida",
         diagnosticos,
         accionesRealizadas: acciones,
         resultadosPruebas: valor("resultados"),
@@ -275,6 +350,10 @@ importFile.addEventListener("change", () => {
       mostrarEstado('El encabezado debe incluir al menos las columnas "dni" y "fecha" (usa la hoja "Sesiones" de la plantilla).', true);
       return;
     }
+
+    // Catálogo de derivaciones vigente (editable en configuracion.html), una
+    // sola lectura por archivo validado, no por fila.
+    derivacionesValidas = construirMapaDerivaciones(await obtenerCatalogoDerivaciones());
 
     const errores = [];
     for (let i = 1; i < filasConDatos.length; i++) {
@@ -365,5 +444,80 @@ importBtn.addEventListener("click", async () => {
     mostrarEstado("Error al importar: " + (err.message || "revisa la consola."), true);
   } finally {
     importBtn.disabled = false;
+  }
+});
+
+// ---------- Reporte maestro: consolidado de TODO lo cargado ----------
+// Una sola collectionGroup query trae las sesiones de todos los pacientes
+// (igual que en pacientes.js/agenda.js); los datos de identidad se piden por
+// lotes a través del caché compartido de fichas.js. Incluye tanto lo
+// importado por Excel como lo capturado a mano en Ficha de Atención.
+downloadReportBtn.addEventListener("click", async () => {
+  if (!sheetJsDisponible()) return;
+
+  const originalHtml = downloadReportBtn.innerHTML;
+  downloadReportBtn.disabled = true;
+  downloadReportBtn.textContent = "Generando…";
+
+  try {
+    const snap = await getDocs(collectionGroup(dbPsico, "sesiones"));
+    const sesiones = snap.docs
+      .filter((d) => d.id !== "borrador-actual")
+      .map((d) => ({ dni: d.ref.parent.parent.id, data: d.data() }));
+
+    if (sesiones.length === 0) {
+      alert("Todavía no hay sesiones registradas para exportar.");
+      return;
+    }
+
+    const dnis = Array.from(new Set(sesiones.map((s) => s.dni)));
+    const fichas = await fetchFichasPorDnis(dnis);
+
+    sesiones.sort((a, b) => {
+      const fa = a.data.guardadoEn && a.data.guardadoEn.toDate ? a.data.guardadoEn.toDate().getTime() : 0;
+      const fb = b.data.guardadoEn && b.data.guardadoEn.toDate ? b.data.guardadoEn.toDate().getTime() : 0;
+      return fb - fa;
+    });
+
+    const filas = [COLUMNAS_REPORTE];
+    sesiones.forEach(({ dni, data }) => {
+      const ficha = fichas.get(dni) || {};
+      const fechaObj = data.guardadoEn && data.guardadoEn.toDate ? data.guardadoEn.toDate() : null;
+
+      filas.push([
+        dni,
+        ficha.nombre || "",
+        ficha.area || "",
+        ficha.cargo || "",
+        ficha.sede || "",
+        fechaObj ? fechaObj.toISOString().slice(0, 10) : "",
+        fechaObj ? fechaObj.toTimeString().slice(0, 5) : "",
+        data.estado === "borrador" ? "Borrador" : "Completada",
+        data.modalidad || "",
+        data.riesgo ? "si" : "no",
+        data.prioridad || "",
+        data.frecuencia || "",
+        data.motivoConsulta || "",
+        data.evolucion || "",
+        data.aptitud || "",
+        data.derivacion || "",
+        (data.diagnosticos || []).map((d) => d.label).join("; "),
+        (data.accionesRealizadas || []).join("; "),
+        data.resultadosPruebas || ""
+      ]);
+    });
+
+    const libro = XLSX.utils.book_new();
+    const hoja = hojaConAnchos(filas, COLUMNAS_REPORTE);
+    XLSX.utils.book_append_sheet(libro, hoja, "Historial Completo");
+
+    const hoy = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(libro, `reporte-maestro-historico-${hoy}.xlsx`);
+  } catch (err) {
+    console.error("Error al generar el reporte maestro:", err);
+    alert("No se pudo generar el reporte maestro. Revisa la consola.");
+  } finally {
+    downloadReportBtn.disabled = false;
+    downloadReportBtn.innerHTML = originalHtml;
   }
 });

@@ -4,7 +4,7 @@
 // guardar la sesión final) / no_asistio / reprogramada (se marcan aquí).
 // Los nombres y áreas salen de las fichas de personal (firebase-config,
 // autenticado), pedidos por lotes como en pacientes.js.
-import { dbPsico, PACIENTES_COLLECTION, DISPONIBILIDAD_COLLECTION, MODALIDADES } from "./fb-psico.js";
+import { dbPsico, PACIENTES_COLLECTION, DISPONIBILIDAD_COLLECTION, MODALIDADES, registrarHistorialCita } from "./fb-psico.js";
 import { auth } from "./firebase-config.js";
 import { fetchFichasPorDnis } from "./fichas-cache.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
@@ -321,6 +321,12 @@ async function marcarNoAsistio(reserva) {
 
   try {
     await updateDoc(doc(dbPsico, PACIENTES_COLLECTION, reserva.dni), { estado: "no_asistio" });
+    registrarHistorialCita(reserva.dni, {
+      estado: "no_asistio",
+      fecha: reserva.data.fecha,
+      hora: reserva.data.hora,
+      modalidad: reserva.data.modalidad
+    }).catch((err) => console.warn("No se pudo registrar el historial de la cita:", err));
   } catch (err) {
     console.error("Error al marcar la inasistencia:", err);
     alert("No se pudo guardar el cambio.");
@@ -452,6 +458,12 @@ reprogramarGuardar.addEventListener("click", async () => {
 
   try {
     await updateDoc(doc(dbPsico, PACIENTES_COLLECTION, reservaEnReprogramacion.dni), cambios);
+    registrarHistorialCita(reservaEnReprogramacion.dni, {
+      estado: "reprogramada",
+      fecha: fechaISO,
+      hora: horaReprogramacion,
+      modalidad: reservaEnReprogramacion.data.modalidad
+    }).catch((err) => console.warn("No se pudo registrar el historial de la cita:", err));
     Object.assign(reservaEnReprogramacion.data, cambios);
     cerrarModalReprogramar();
     renderLista();

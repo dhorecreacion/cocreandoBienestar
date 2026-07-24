@@ -23,7 +23,16 @@
     console.log("firebase-config cargado");
 
     export const ADMIN_UIDS = new Set([
-    "bFsNvjtDXyZolGITD5KeZnBpE2B3"
+    "26cZ8Yfc7GgbA25xwUBk9QqNI0m2"
     ]);
 
+    // Único correo autorizado para entrar al panel del psicólogo. Se usa
+    // tanto en el formulario de acceso (index.html) como en el guardia de
+    // las 5 páginas protegidas (js/auth-guard.js), para que no baste con una
+    // cuenta cualquiera del proyecto de Firebase.
+    export const ADMIN_EMAIL = "pbernuy@mibsac.com";
+
     export { app, auth, db, rtdb };
+
+
+    

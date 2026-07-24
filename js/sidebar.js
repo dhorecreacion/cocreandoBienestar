@@ -14,7 +14,7 @@ var NAV_ITEMS = [
   { key: "pacientes", label: "Pacientes", href: "pacientes.html", icon: "groups" },
   { key: "disponibilidad", label: "Mi Disponibilidad", href: "disponibilidad.html", icon: "event_available" },
   { key: "indicadores", label: "Indicadores", href: "indicadores.html", icon: "analytics" },
-  { key: "configuracion", label: "Configuración", href: "#", icon: "settings" }
+  { key: "configuracion", label: "Configuración", href: "configuracion.html", icon: "settings" }
 ];
 
 var ACTIVE_CLASSES = "flex items-center gap-3 px-3 py-2.5 rounded-lg border-l-4 border-secondary bg-secondary/10 text-on-primary font-semibold transition-all";
