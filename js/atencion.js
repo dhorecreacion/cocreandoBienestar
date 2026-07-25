@@ -19,6 +19,7 @@ import {
   serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { dbPsico, PACIENTES_COLLECTION, CONFIGURACION_COLLECTION, HISTORIAL_CITAS_SUBCOLLECTION, registrarHistorialCita } from "./fb-psico.js";
+import { cargarCie10 } from "./cie10.js";
 
 // Catálogos editables desde configuracion.html; estos son solo el respaldo
 // por si el documento de Firestore aún no existe (primera vez).
@@ -515,16 +516,21 @@ riskSignal.addEventListener("change", function (e) {
 });
 
 // Diagnóstico presuntivo: buscador con autocompletado contra el catálogo
-// CIE-10 completo de la API pública de notasalud.com (JSON, CORS abierto,
-// 120 búsquedas/min). Al tocar un resultado se agrega a la lista.
+// CIE-10 local (data/cie10.json, editable a mano). Al tocar un resultado se
+// agrega a la lista.
 var diagnosisSearch = document.getElementById("diagnosis-search");
 var diagnosisResults = document.getElementById("diagnosis-results");
 var diagnosisCodeInput = document.getElementById("diagnosis-code");
 var diagnosisList = document.getElementById("diagnosis-list");
 
-var CIE10_API = "https://notasalud.com/buscar/cie-10";
 var busquedaTimer = null;
-var contadorBusquedas = 0; // descarta respuestas que llegan tarde (fuera de orden)
+cargarCie10(); // dispara la carga (y el cacheo) apenas entra a la página
+
+// Quita tildes y pasa a minúsculas, para que la búsqueda no dependa de
+// mayúsculas/acentos (mismo criterio que importador.js).
+function normalizarTexto(texto) {
+  return texto.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+}
 
 function buildDiagnosisRow(code, label) {
   var row = document.createElement("div");
@@ -544,12 +550,6 @@ function buildDiagnosisRow(code, label) {
   row.appendChild(text);
   row.appendChild(removeBtn);
   return row;
-}
-
-// La API devuelve los códigos sin punto ("F411"); el formato estándar
-// CIE-10 lleva punto tras el tercer carácter ("F41.1").
-function formatearCodigoCie10(codigo) {
-  return codigo.length > 3 ? codigo.slice(0, 3) + "." + codigo.slice(3) : codigo;
 }
 
 function ocultarResultados() {
@@ -585,7 +585,7 @@ function renderResultadosCie10(items) {
   }
 
   items.forEach(function (item) {
-    var codigo = formatearCodigoCie10(String(item.codigo || ""));
+    var codigo = item.codigo;
     var li = document.createElement("li");
     li.className =
       "px-4 py-2.5 text-body-md hover:bg-surface-container-low cursor-pointer border-b border-outline-variant/30";
@@ -606,19 +606,26 @@ function renderResultadosCie10(items) {
   diagnosisResults.classList.remove("hidden");
 }
 
+// Búsqueda local (sin red): coincide por código o por texto del nombre,
+// hasta 10 resultados — mismo límite que tenía la API.
 async function buscarCie10(texto) {
-  var miBusqueda = ++contadorBusquedas;
-  try {
-    var resp = await fetch(CIE10_API + "?q=" + encodeURIComponent(texto) + "&limit=10");
-    if (!resp.ok) throw new Error("HTTP " + resp.status);
-    var data = await resp.json();
-    if (miBusqueda !== contadorBusquedas) return; // ya hay una búsqueda más nueva
-    renderResultadosCie10(data.results || []);
-  } catch (err) {
-    if (miBusqueda !== contadorBusquedas) return;
-    console.error("Error al buscar en el catálogo CIE-10:", err);
-    mostrarMensajeResultados("No se pudo buscar. Revisa tu conexión a internet.");
+  var catalogo = await cargarCie10();
+  if (!catalogo || Object.keys(catalogo).length === 0) {
+    mostrarMensajeResultados("El catálogo CIE-10 local (data/cie10.json) está vacío o no se pudo cargar.");
+    return;
   }
+
+  var consulta = normalizarTexto(texto);
+  var resultados = [];
+  for (var codigo in catalogo) {
+    if (!Object.prototype.hasOwnProperty.call(catalogo, codigo)) continue;
+    var nombre = catalogo[codigo];
+    if (normalizarTexto(codigo).indexOf(consulta) !== -1 || normalizarTexto(nombre).indexOf(consulta) !== -1) {
+      resultados.push({ codigo: codigo, nombre: nombre });
+      if (resultados.length >= 10) break;
+    }
+  }
+  renderResultadosCie10(resultados);
 }
 
 diagnosisSearch.addEventListener("input", function () {

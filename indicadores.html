@@ -126,6 +126,18 @@
 <p class="text-on-surface-variant font-label-md">% Capacidad Utilizada</p>
 <h4 class="text-3xl font-bold text-primary mt-1" id="kpi-capacidad">—</h4>
 </div>
+<!-- Metric 8: Atenciones a Familiares (cantidad, sesiones del mes brindadas
+     a un familiar del trabajador, no al trabajador mismo) -->
+<div class="glass-card p-6 rounded-xl transition-all hover:-translate-y-1">
+<div class="flex justify-between items-start mb-4">
+<div class="p-2 rounded-lg bg-secondary/10 text-secondary">
+<span class="material-symbols-outlined">family_restroom</span>
+</div>
+<span class="text-xs font-bold text-primary/40 bg-surface-container-high px-2 py-1 rounded">Del mes</span>
+</div>
+<p class="text-on-surface-variant font-label-md">Atenciones a Familiares</p>
+<h4 class="text-3xl font-bold text-primary mt-1" id="kpi-familiares">—</h4>
+</div>
 </div>
 <!-- Charts Grid -->
 <div class="grid grid-cols-12 gap-gutter">
@@ -243,6 +255,26 @@
 <span class="text-xs text-on-surface-variant font-medium">Riesgo/restricción, +30 días sin sesión</span>
 </div>
 <div class="space-y-3" id="chart-seguimiento">
+<p class="text-body-md text-on-surface-variant">Cargando…</p>
+</div>
+</div>
+<!-- Atenciones a Familiares por Área (cantidad, mes elegido) -->
+<div class="col-span-12 lg:col-span-6 glass-card p-6 sm:p-8 rounded-xl">
+<div class="flex items-center justify-between mb-6">
+<h5 class="font-headline-md text-headline-md text-primary">Atenciones a Familiares por Área</h5>
+<span class="text-xs text-on-surface-variant font-medium">Cantidad, mes elegido</span>
+</div>
+<div class="space-y-6" id="chart-familiares-area">
+<p class="text-body-md text-on-surface-variant">Cargando…</p>
+</div>
+</div>
+<!-- Motivos de Inasistencia/Reprogramación (histórico, no solo el mes elegido) -->
+<div class="col-span-12 lg:col-span-6 glass-card p-6 sm:p-8 rounded-xl">
+<div class="flex items-center justify-between mb-6">
+<h5 class="font-headline-md text-headline-md text-primary">Motivos de Inasistencia/Reprogramación</h5>
+<span class="text-xs text-on-surface-variant font-medium">Histórico</span>
+</div>
+<div class="space-y-4" id="chart-motivos">
 <p class="text-body-md text-on-surface-variant">Cargando…</p>
 </div>
 </div>

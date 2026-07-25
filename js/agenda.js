@@ -4,7 +4,7 @@
 // guardar la sesión final) / no_asistio / reprogramada (se marcan aquí).
 // Los nombres y áreas salen de las fichas de personal (firebase-config,
 // autenticado), pedidos por lotes como en pacientes.js.
-import { dbPsico, PACIENTES_COLLECTION, DISPONIBILIDAD_COLLECTION, MODALIDADES, registrarHistorialCita } from "./fb-psico.js";
+import { dbPsico, PACIENTES_COLLECTION, DISPONIBILIDAD_COLLECTION, MODALIDADES, MOTIVOS_INASISTENCIA, registrarHistorialCita } from "./fb-psico.js";
 import { auth } from "./firebase-config.js";
 import { fetchFichasPorDnis } from "./fichas-cache.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
@@ -59,6 +59,14 @@ let fichasMap = new Map();
 let disponibilidadMap = {};
 let intervaloMinutos = 30; // duración de cita; la configura el administrador
 let filtroActual = "hoy";
+
+function poblarSelectMotivos(select) {
+  MOTIVOS_INASISTENCIA.forEach((texto) => {
+    const option = document.createElement("option");
+    option.textContent = texto;
+    select.appendChild(option);
+  });
+}
 
 // ---------- Utilidades ----------
 function formatearFechaISO(fecha) {
@@ -248,7 +256,7 @@ function crearTarjetaCita(reserva) {
     noAsistioBtn.className =
       "p-2 rounded-lg border border-outline-variant text-on-surface-variant hover:bg-error-container hover:text-on-error-container transition-all";
     noAsistioBtn.innerHTML = '<span class="material-symbols-outlined">person_off</span>';
-    noAsistioBtn.addEventListener("click", () => marcarNoAsistio(reserva));
+    noAsistioBtn.addEventListener("click", () => abrirModalNoAsistio(reserva));
     acciones.appendChild(noAsistioBtn);
   }
 
@@ -325,30 +333,77 @@ filterHoyBtn.addEventListener("click", () => setFiltro("hoy"));
 filterTodasBtn.addEventListener("click", () => setFiltro("todas"));
 
 // ---------- No asistió ----------
-async function marcarNoAsistio(reserva) {
-  const nombre = (fichasMap.get(reserva.dni) || {}).nombre || "DNI " + reserva.dni;
-  if (!window.confirm(`¿Marcar la cita de ${nombre} como "No asistió"?`)) return;
+const noAsistioModal = document.getElementById("no-asistio-modal");
+const noAsistioClose = document.getElementById("no-asistio-close");
+const noAsistioPaciente = document.getElementById("no-asistio-paciente");
+const noAsistioMotivoSelect = document.getElementById("no-asistio-motivo");
+const noAsistioError = document.getElementById("no-asistio-error");
+const noAsistioGuardar = document.getElementById("no-asistio-guardar");
+poblarSelectMotivos(noAsistioMotivoSelect);
 
-  reserva.data.estado = "no_asistio";
-  renderLista();
-  renderStats();
+let reservaEnNoAsistio = null;
+
+function abrirModalNoAsistio(reserva) {
+  reservaEnNoAsistio = reserva;
+  const nombre = (fichasMap.get(reserva.dni) || {}).nombre || "DNI " + reserva.dni;
+  noAsistioPaciente.textContent = `${nombre} · cita: ${reserva.data.fechaLabel || "—"}, ${reserva.data.hora || "—"}`;
+  noAsistioMotivoSelect.value = "";
+  noAsistioError.classList.add("hidden");
+  noAsistioModal.classList.remove("hidden");
+}
+
+function cerrarModalNoAsistio() {
+  noAsistioModal.classList.add("hidden");
+  reservaEnNoAsistio = null;
+}
+
+noAsistioClose.addEventListener("click", cerrarModalNoAsistio);
+noAsistioModal.addEventListener("click", (e) => {
+  if (e.target === noAsistioModal) cerrarModalNoAsistio();
+});
+
+noAsistioGuardar.addEventListener("click", async () => {
+  if (!reservaEnNoAsistio) return;
+
+  const motivo = noAsistioMotivoSelect.value;
+  if (!motivo) {
+    noAsistioError.textContent = "Elige un motivo.";
+    noAsistioError.classList.remove("hidden");
+    return;
+  }
+
+  const reserva = reservaEnNoAsistio;
+  const originalText = noAsistioGuardar.textContent;
+  noAsistioGuardar.disabled = true;
+  noAsistioGuardar.textContent = "Guardando...";
 
   try {
-    await updateDoc(doc(dbPsico, PACIENTES_COLLECTION, reserva.dni), { estado: "no_asistio" });
+    await updateDoc(doc(dbPsico, PACIENTES_COLLECTION, reserva.dni), { estado: "no_asistio", motivo });
     registrarHistorialCita(reserva.dni, {
       estado: "no_asistio",
       fecha: reserva.data.fecha,
       hora: reserva.data.hora,
       modalidad: reserva.data.modalidad,
+      motivo,
       esParaFamiliar: !!reserva.data.esParaFamiliar,
       familiarNombre: reserva.data.familiarNombre || null,
       familiarParentesco: reserva.data.familiarParentesco || null
     }).catch((err) => console.warn("No se pudo registrar el historial de la cita:", err));
+
+    reserva.data.estado = "no_asistio";
+    reserva.data.motivo = motivo;
+    cerrarModalNoAsistio();
+    renderLista();
+    renderStats();
   } catch (err) {
     console.error("Error al marcar la inasistencia:", err);
-    alert("No se pudo guardar el cambio.");
+    noAsistioError.textContent = "No se pudo guardar el cambio.";
+    noAsistioError.classList.remove("hidden");
+  } finally {
+    noAsistioGuardar.disabled = false;
+    noAsistioGuardar.textContent = originalText;
   }
-}
+});
 
 // ---------- Reprogramar ----------
 const reprogramarModal = document.getElementById("reprogramar-modal");
@@ -356,14 +411,20 @@ const reprogramarClose = document.getElementById("reprogramar-close");
 const reprogramarPaciente = document.getElementById("reprogramar-paciente");
 const reprogramarFecha = document.getElementById("reprogramar-fecha");
 const reprogramarHoras = document.getElementById("reprogramar-horas");
+const reprogramarMotivoSelect = document.getElementById("reprogramar-motivo");
 const reprogramarError = document.getElementById("reprogramar-error");
 const reprogramarGuardar = document.getElementById("reprogramar-guardar");
+poblarSelectMotivos(reprogramarMotivoSelect);
 
 let reservaEnReprogramacion = null;
-let horaReprogramacion = null;
+let turnoReprogramacion = null; // { hora, modalidad, enlace } del bloque de disponibilidad elegido
 
+// Turnos del día con su modalidad (y enlace, si es video) — mismo criterio
+// que index.js (reserva pública): cada bloque de disponibilidad define su
+// propia modalidad, así que un mismo día puede tener horas presenciales y
+// horas por llamada a la vez.
 function generarHorasDelDia(bloques) {
-  const horas = new Set();
+  const horas = new Map();
   bloques
     .filter((b) => b.activo && b.modalidad !== "emergencia")
     .forEach((b) => {
@@ -372,11 +433,16 @@ function generarHorasDelDia(bloques) {
       let actual = hi * 60 + mi;
       const fin = hf * 60 + mf;
       while (actual < fin) {
-        horas.add(`${String(Math.floor(actual / 60)).padStart(2, "0")}:${String(actual % 60).padStart(2, "0")}`);
+        const clave = `${String(Math.floor(actual / 60)).padStart(2, "0")}:${String(actual % 60).padStart(2, "0")}`;
+        if (!horas.has(clave)) {
+          horas.set(clave, { modalidad: b.modalidad || "presencial", enlace: b.enlace || "" });
+        }
         actual += intervaloMinutos;
       }
     });
-  return Array.from(horas).sort();
+  return Array.from(horas.entries())
+    .map(([hora, info]) => ({ hora, modalidad: info.modalidad, enlace: info.enlace }))
+    .sort((a, b) => a.hora.localeCompare(b.hora));
 }
 
 function horaOcupada(fechaISO, hora, dniExcluido) {
@@ -385,13 +451,14 @@ function horaOcupada(fechaISO, hora, dniExcluido) {
 
 function abrirModalReprogramar(reserva) {
   reservaEnReprogramacion = reserva;
-  horaReprogramacion = null;
+  turnoReprogramacion = null;
 
   const nombre = (fichasMap.get(reserva.dni) || {}).nombre || "DNI " + reserva.dni;
   reprogramarPaciente.textContent = `${nombre} · cita actual: ${reserva.data.fechaLabel || "—"}, ${reserva.data.hora || "—"}`;
   reprogramarFecha.value = "";
   reprogramarFecha.min = formatearFechaISO(new Date());
   reprogramarHoras.innerHTML = '<p class="col-span-full text-body-md text-on-surface-variant">Elige primero una fecha.</p>';
+  reprogramarMotivoSelect.value = "";
   reprogramarError.classList.add("hidden");
   reprogramarModal.classList.remove("hidden");
 }
@@ -399,7 +466,7 @@ function abrirModalReprogramar(reserva) {
 function cerrarModalReprogramar() {
   reprogramarModal.classList.add("hidden");
   reservaEnReprogramacion = null;
-  horaReprogramacion = null;
+  turnoReprogramacion = null;
 }
 
 reprogramarClose.addEventListener("click", cerrarModalReprogramar);
@@ -415,29 +482,39 @@ function renderHorasReprogramacion() {
 
   const fecha = new Date(`${fechaISO}T00:00:00`);
   const bloques = disponibilidadMap[DIA_KEY_POR_GETDAY[fecha.getDay()]] || [];
-  const horas = generarHorasDelDia(bloques);
+  const turnos = generarHorasDelDia(bloques);
 
-  if (horas.length === 0) {
+  if (turnos.length === 0) {
     reprogramarHoras.innerHTML = '<p class="col-span-full text-body-md text-on-surface-variant">El psicólogo no atiende ese día.</p>';
     return;
   }
 
-  horas.forEach((hora) => {
-    const ocupada = horaOcupada(fechaISO, hora, reservaEnReprogramacion.dni);
+  turnos.forEach((turno) => {
+    const ocupada = horaOcupada(fechaISO, turno.hora, reservaEnReprogramacion.dni);
+    const meta = MODALIDADES[turno.modalidad] || MODALIDADES.presencial;
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.textContent = hora;
+    btn.title = meta.label;
+
+    const icono = document.createElement("span");
+    icono.className = "material-symbols-outlined text-[16px]";
+    icono.textContent = meta.icon;
+    const texto = document.createElement("span");
+    texto.className = "text-label-md";
+    texto.textContent = turno.hora;
+    btn.appendChild(icono);
+    btn.appendChild(texto);
 
     if (ocupada) {
       btn.disabled = true;
-      btn.className = "py-2 rounded-lg border border-outline-variant bg-surface-container-low text-outline text-label-md cursor-not-allowed opacity-70";
+      btn.className = "py-2 rounded-lg border border-outline-variant bg-surface-container-low text-outline flex items-center justify-center gap-1 cursor-not-allowed opacity-70";
     } else {
-      btn.className =
-        hora === horaReprogramacion
-          ? "py-2 rounded-lg border-2 border-secondary bg-secondary text-on-secondary text-label-md font-semibold"
-          : "py-2 rounded-lg border border-outline-variant hover:border-secondary text-label-md transition-all";
+      const seleccionado = turnoReprogramacion && turnoReprogramacion.hora === turno.hora;
+      btn.className = seleccionado
+        ? "py-2 rounded-lg border-2 border-secondary bg-secondary text-on-secondary flex items-center justify-center gap-1 font-semibold"
+        : "py-2 rounded-lg border border-outline-variant hover:border-secondary flex items-center justify-center gap-1 transition-all";
       btn.addEventListener("click", () => {
-        horaReprogramacion = hora;
+        turnoReprogramacion = turno;
         renderHorasReprogramacion();
       });
     }
@@ -447,7 +524,7 @@ function renderHorasReprogramacion() {
 }
 
 reprogramarFecha.addEventListener("change", () => {
-  horaReprogramacion = null;
+  turnoReprogramacion = null;
   renderHorasReprogramacion();
 });
 
@@ -455,18 +532,25 @@ reprogramarGuardar.addEventListener("click", async () => {
   if (!reservaEnReprogramacion) return;
 
   const fechaISO = reprogramarFecha.value;
-  if (!fechaISO || !horaReprogramacion) {
-    reprogramarError.textContent = "Elige una fecha y una hora.";
+  const motivo = reprogramarMotivoSelect.value;
+  if (!fechaISO || !turnoReprogramacion || !motivo) {
+    reprogramarError.textContent = "Elige una fecha, una hora y un motivo.";
     reprogramarError.classList.remove("hidden");
     return;
   }
 
   const fecha = new Date(`${fechaISO}T00:00:00`);
+  // La modalidad y el enlace se actualizan al bloque de disponibilidad real
+  // del horario elegido — no se conserva la modalidad de la cita original,
+  // porque ese horario puede estar configurado para otra modalidad.
   const cambios = {
     fecha: fechaISO,
     fechaLabel: fechaLabelDe(fecha),
-    hora: horaReprogramacion,
-    estado: "reprogramada"
+    hora: turnoReprogramacion.hora,
+    modalidad: turnoReprogramacion.modalidad,
+    enlace: turnoReprogramacion.modalidad === "virtual" ? turnoReprogramacion.enlace : "",
+    estado: "reprogramada",
+    motivo
   };
 
   const originalText = reprogramarGuardar.textContent;
@@ -484,8 +568,9 @@ reprogramarGuardar.addEventListener("click", async () => {
     registrarHistorialCita(reservaEnReprogramacion.dni, {
       estado: "reservada",
       fecha: fechaISO,
-      hora: horaReprogramacion,
-      modalidad: reservaEnReprogramacion.data.modalidad,
+      hora: turnoReprogramacion.hora,
+      modalidad: turnoReprogramacion.modalidad,
+      motivo,
       esParaFamiliar: !!reservaEnReprogramacion.data.esParaFamiliar,
       familiarNombre: reservaEnReprogramacion.data.familiarNombre || null,
       familiarParentesco: reservaEnReprogramacion.data.familiarParentesco || null

@@ -18,10 +18,12 @@
 // - Las sesiones con riesgo se importan como revisado:true, para que un
 //   histórico viejo no encienda la alerta roja de la agenda.
 // - Los diagnósticos aceptan CUALQUIER código CIE-10 (con o sin punto) y son
-//   opcionales; sus nombres se completan automáticamente consultando el
-//   catálogo público de notasalud.com al validar el archivo.
-import { dbPsico, PACIENTES_COLLECTION, HISTORIAL_CITAS_SUBCOLLECTION, CONFIGURACION_COLLECTION } from "./fb-psico.js";
+//   opcionales; sus nombres se completan al validar el archivo desde el
+//   catálogo local (data/cie10.json) — si un código no está ahí, se avisa
+//   (no bloquea el import) y queda solo con el código, sin nombre.
+import { dbPsico, PACIENTES_COLLECTION, HISTORIAL_CITAS_SUBCOLLECTION, CONFIGURACION_COLLECTION, MOTIVOS_INASISTENCIA } from "./fb-psico.js";
 import { fetchFichasPorDnis } from "./fichas-cache.js";
+import { cargarCie10 } from "./cie10.js";
 import {
   doc,
   getDoc,
@@ -47,19 +49,6 @@ const COLUMNAS = [
   "asistio", "motivo", "riesgo", "frecuencia", "prioridad",
   "derivacion", "aptitud", "evolucion", "diagnosticos", "acciones", "resultados"
 ];
-
-const CIE10_API = "https://notasalud.com/buscar/cie-10";
-const MAX_CODIGOS_A_RESOLVER = 80; // margen bajo el límite de 120 consultas/min de la API
-
-// Nombres pre-cargados de los códigos más usados (evita consultas a la API).
-const etiquetasCie10 = new Map([
-  ["F41.1", "F41.1 - Trastorno de ansiedad generalizada"],
-  ["F32.1", "F32.1 - Episodio depresivo moderado"],
-  ["F43.1", "F43.1 - Trastorno de estrés postraumático"],
-  ["F43.2", "F43.2 - Trastorno de adaptación"],
-  ["F51.0", "F51.0 - Insomnio no orgánico"],
-  ["Z73.0", "Z73.0 - Problemas relacionados con la enfermedad consuntiva"]
-]);
 
 const PRIORIDADES = { baja: "low", media: "medium", alta: "high", low: "low", medium: "medium", high: "high" };
 const APTITUDES = { apto: "apto", restricciones: "restricciones", "apto con restricciones": "restricciones", "no apto": "no_apto", no_apto: "no_apto" };
@@ -115,6 +104,10 @@ function construirMapaCatalogo(lista) {
 // plantilla, con el catálogo real; mientras tanto quedan con el respaldo.
 let derivacionesValidas = construirMapaCatalogo(DERIVACIONES_DEFAULT);
 let accionesValidas = construirMapaCatalogo(ACCIONES_DEFAULT);
+
+// Motivos de inasistencia/reprogramación: catálogo fijo (no editable desde
+// Configuración, a diferencia de los dos anteriores), compartido con agenda.js.
+const motivosValidos = construirMapaCatalogo(MOTIVOS_INASISTENCIA);
 
 // Una sola lectura trae ambos catálogos (viven en el mismo documento).
 async function obtenerCatalogos() {
@@ -211,7 +204,8 @@ function hojaConAnchos(filas, columnas) {
 // las 3 no-default), varias sesiones para un mismo DNI, diagnósticos simples
 // y múltiples, una sesión brindada a un familiar del trabajador, y al final
 // 3 filas de tipo "cita" (sin contenido clínico) mostrando "asistio"
-// si / no / reprogramada, incluida una cita de un familiar que no asistió.
+// si / no / reprogramada, incluida una cita de un familiar que no asistió y
+// dos con "motivo" (catálogo fijo de agenda.html).
 const FILAS_EJEMPLO = [
   ["sesion", "10000001", "2026-05-13", "18:00", "virtual", "no", "", "", "", "", "no", "Semanal", "media", "", "apto", "Se brindan recomendaciones generales.", "", "", ""],
   ["sesion", "10000002", "2026-05-13", "10:00", "llamada", "no", "", "", "", "Refiere afectación emocional por el fallecimiento de un familiar cercano.", "no", "a demanda", "media", "", "no apto", "Se brindan recomendaciones para el manejo del proceso de duelo.", "", "", ""],
@@ -221,9 +215,9 @@ const FILAS_EJEMPLO = [
   ["sesion", "10000005", "2026-07-24", "21:59", "", "no", "", "", "", "Caso de alta prioridad; requiere seguimiento inmediato.", "si", "A demanda", "alta", "Psiquiatría", "no apto", "Se registra intervención de urgencia y coordinación con derivación especializada.", "F43.1", "Pruebas psicométricas aplicadas", "Pendiente de cierre."],
   ["sesion", "10000006", "2026-06-23", "15:00", "llamada", "no", "", "", "", "Refiere afectación emocional por el fallecimiento de un familiar.", "no", "Semanal", "baja", "Psicologia", "apto", "Se le recomienda tomarse un tiempo para procesar la pérdida junto a su familia.", "F41.2", "Recomendaciones compartidas verbalmente;Pruebas psicométricas aplicadas", "En proceso de cierre y codificación."],
   ["sesion", "10000007", "2026-07-10", "16:00", "presencial", "si", "Ana Torres", "Esposa(o)", "", "Sesión brindada al familiar del trabajador por convenio del programa de bienestar.", "no", "A demanda", "media", "", "", "Se realiza consejería breve; se orienta sobre manejo de conflictos familiares.", "", "", ""],
-  ["cita", "10000010", "2026-05-04", "09:00", "presencial", "si", "Sofía Ramos", "Hermano(a)", "no", "", "", "", "", "", "", "", "", "", ""],
+  ["cita", "10000010", "2026-05-04", "09:00", "presencial", "si", "Sofía Ramos", "Hermano(a)", "no", "Motivos de salud", "", "", "", "", "", "", "", "", ""],
   ["cita", "10000011", "2026-06-02", "16:00", "llamada", "", "", "", "si", "", "", "", "", "", "", "", "", "", ""],
-  ["cita", "10000012", "2026-06-10", "11:00", "presencial", "", "", "", "reprogramada", "", "", "", "", "", "", "", "", "", ""]
+  ["cita", "10000012", "2026-06-10", "11:00", "presencial", "", "", "", "reprogramada", "Confusión con el horario", "", "", "", "", "", "", "", "", ""]
 ];
 
 // ---------- Plantilla Excel (una hoja de datos + hoja de guía) ----------
@@ -244,14 +238,14 @@ downloadTemplateBtn.addEventListener("click", async () => {
     ["familiar_nombre", "No", "Nombre del familiar (solo aplica si \"familiar\" es sí)."],
     ["familiar_parentesco", "No", "Padre, Madre, Hermano(a), Esposa(o), Hijo(a) u otro texto libre (solo aplica si \"familiar\" es sí)."],
     ["asistio", "SÍ, solo si tipo=cita", "si / no / reprogramada. No se usa en filas de tipo \"sesion\" (esas siempre quedan como sesión completada). \"reprogramada\" es para cuando sabes que la cita se movió de fecha: queda \"pendiente\" en el sistema (no cuenta ni a favor ni en contra del % de asistencia), pero sí se ve en el historial de esa persona."],
-    ["motivo", "No — solo aplica a tipo=sesion", "Texto libre: motivo de consulta."],
+    ["motivo", "No", "Significa algo distinto según \"tipo\": en sesion es el motivo de consulta (texto libre). En cita es el motivo de la inasistencia/reprogramación y debe ser una de estas opciones exactas: " + MOTIVOS_INASISTENCIA.join(", ") + " (mismo catálogo fijo de los modales \"No Asistió\"/\"Reprogramar\" de agenda.html)."],
     ["riesgo", "No — solo aplica a tipo=sesion", "si / no. Los riesgos históricos NO encienden la alerta de la agenda."],
     ["frecuencia", "No — solo aplica a tipo=sesion", "Semanal, Quincenal, Mensual, A demanda."],
     ["prioridad", "No — solo aplica a tipo=sesion", "baja / media / alta (vacío = media)."],
     ["derivacion", "No — solo aplica a tipo=sesion", catalogos.derivaciones.join(", ") + " (vacío = No requerida). Debe ser una de estas opciones exactas: son las mismas del catálogo editable en Configuración."],
     ["aptitud", "No — solo aplica a tipo=sesion", "apto / restricciones / no_apto."],
     ["evolucion", "No — solo aplica a tipo=sesion", "Texto libre: evolución y observaciones."],
-    ["diagnosticos", "No — solo aplica a tipo=sesion", "Cualquier código del catálogo CIE-10, con o sin punto (F41.1 o F411), separados por ; — el nombre se completa automáticamente al importar. Puede quedar vacío."],
+    ["diagnosticos", "No — solo aplica a tipo=sesion", "Cualquier código del catálogo CIE-10, con o sin punto (F41.1 o F411), separados por ; — el nombre se completa al importar buscándolo en el catálogo local (data/cie10.json); si el código no está ahí, se avisa y queda solo el código, sin nombre. Puede quedar vacío."],
     ["acciones", "No — solo aplica a tipo=sesion", "Una o más, separadas por ; — deben ser del catálogo editable en Configuración: " + catalogos.acciones.join(", ") + "."],
     ["resultados", "No — solo aplica a tipo=sesion", "Texto libre. Ej.: BDI-II: 24 puntos."],
     [],
@@ -281,26 +275,26 @@ function esCodigoCie10Valido(codigoNormalizado) {
   return /^[A-Z]\d{2}(\.[\dA-Z]{1,2})?$/.test(codigoNormalizado);
 }
 
-// Completa los nombres de los códigos consultando el catálogo público.
-// Si la API no responde, el código queda como etiqueta (no bloquea el import).
+// Busca el nombre de cada código en el catálogo local (data/cie10.json).
+// Devuelve también la lista de códigos que no estaban en el catálogo, para
+// que el llamador pueda avisar (no bloquea el import: esos quedan con el
+// código como única etiqueta).
 async function resolverEtiquetasCie10(codigos) {
-  const pendientes = codigos.filter((c) => !etiquetasCie10.has(c));
+  const catalogo = await cargarCie10();
+  const etiquetas = new Map();
+  const noEncontrados = [];
 
-  for (const codigo of pendientes.slice(0, MAX_CODIGOS_A_RESOLVER)) {
-    try {
-      const sinPunto = codigo.replace(".", "");
-      const resp = await fetch(`${CIE10_API}?q=${encodeURIComponent(sinPunto)}&limit=5`);
-      if (!resp.ok) throw new Error("HTTP " + resp.status);
-      const data = await resp.json();
-      const exacto = (data.results || []).find((r) => String(r.codigo).toUpperCase() === sinPunto);
-      etiquetasCie10.set(codigo, exacto ? `${codigo} - ${exacto.nombre}` : codigo);
-    } catch (err) {
-      etiquetasCie10.set(codigo, codigo);
+  codigos.forEach((codigo) => {
+    const nombre = catalogo[codigo];
+    if (nombre) {
+      etiquetas.set(codigo, `${codigo} - ${nombre}`);
+    } else {
+      etiquetas.set(codigo, codigo);
+      noEncontrados.push(codigo);
     }
-  }
+  });
 
-  // Si hubiera más códigos únicos que el tope, quedan con el código como nombre.
-  pendientes.slice(MAX_CODIGOS_A_RESOLVER).forEach((c) => etiquetasCie10.set(c, c));
+  return { etiquetas, noEncontrados };
 }
 
 // ---------- Validación por fila ----------
@@ -347,9 +341,12 @@ function claveHora(hora) {
 // Columnas clínicas que solo tienen sentido en tipo=sesion: si aparecen
 // rellenas en una fila tipo=cita, se ignoran — se avisa para que no se
 // pierda el dato sin que el usuario se entere (igual que ya pasó con
-// "familiar" antes de que lo soportáramos también en citas).
+// "familiar" antes de que lo soportáramos también en citas). "motivo" NO
+// está aquí: en una fila cita significa otra cosa (el motivo de la
+// inasistencia/reprogramación, ver validarFilaCita), no el motivo clínico
+// de consulta.
 const COLUMNAS_CLINICAS = [
-  "motivo", "riesgo", "frecuencia", "prioridad", "derivacion",
+  "riesgo", "frecuencia", "prioridad", "derivacion",
   "aptitud", "evolucion", "diagnosticos", "acciones", "resultados"
 ];
 
@@ -384,6 +381,18 @@ function validarFilaCita(valor, numeroFila) {
     return { error: `Fila ${numeroFila} (cita): "asistio" = "${valor("asistio")}" no válido (si / no / reprogramada).` };
   }
 
+  // Motivo de la inasistencia/reprogramación: mismo catálogo fijo que usan
+  // los modales de agenda.html — opcional, pero si viene debe ser una de
+  // esas opciones exactas (no texto libre, para que el reporte maestro
+  // agrupe bien por motivo).
+  const motivoTexto = normalizarTexto(valor("motivo"));
+  if (motivoTexto && !motivosValidos[motivoTexto]) {
+    return {
+      error: `Fila ${numeroFila} (cita): motivo "${valor("motivo")}" no válido (${Object.values(motivosValidos).join(" / ")}).`
+    };
+  }
+  const motivo = motivoTexto ? motivosValidos[motivoTexto] : null;
+
   // Familiar: una cita (asistida, no asistida o reprogramada) también puede
   // haber sido para un familiar del trabajador, igual que una sesión.
   const esFamiliar = ["si", "sí", "1", "true"].includes(valor("familiar").toLowerCase());
@@ -396,6 +405,9 @@ function validarFilaCita(valor, numeroFila) {
   if (esFamiliar && !familiarNombre && !familiarParentesco) {
     advertencias.push(`Fila ${numeroFila} (cita): "familiar" está en sí, pero no pusiste nombre ni parentesco — quedará marcada como familiar sin más detalle.`);
   }
+  if (motivo && estadoCanonico === "atendida") {
+    advertencias.push(`Fila ${numeroFila} (cita): tiene un "motivo" pero "asistio" es "si" — es inusual que una cita atendida tenga motivo de inasistencia/reprogramación; se guarda igual.`);
+  }
 
   return {
     cita: {
@@ -407,6 +419,7 @@ function validarFilaCita(valor, numeroFila) {
         fecha: fechaParseada.iso,
         hora: hora || null,
         modalidad: MODALIDADES_ALIAS[modalidadTexto] || null,
+        motivo: motivo,
         importado: true,
         esParaFamiliar: esFamiliar,
         familiarNombre: familiarNombre || null,
@@ -606,17 +619,21 @@ importFile.addEventListener("change", () => {
       if (resultado.advertencias && resultado.advertencias.length) advertencias.push(...resultado.advertencias);
     }
 
-    // Nombres de los diagnósticos: se completan desde el catálogo CIE-10.
+    // Nombres de los diagnósticos: se completan desde el catálogo CIE-10 local.
     const codigosUnicos = Array.from(new Set(sesionesValidas.flatMap((s) => s.data.diagnosticos.map((d) => d.codigo))));
-    if (codigosUnicos.some((c) => !etiquetasCie10.has(c))) {
-      mostrarEstado("Completando nombres de diagnósticos desde el catálogo CIE-10…", false);
-      await resolverEtiquetasCie10(codigosUnicos);
-    }
-    sesionesValidas.forEach((s) => {
-      s.data.diagnosticos.forEach((d) => {
-        d.label = etiquetasCie10.get(d.codigo) || d.codigo;
+    if (codigosUnicos.length > 0) {
+      const { etiquetas, noEncontrados } = await resolverEtiquetasCie10(codigosUnicos);
+      sesionesValidas.forEach((s) => {
+        s.data.diagnosticos.forEach((d) => {
+          d.label = etiquetas.get(d.codigo) || d.codigo;
+        });
       });
-    });
+      if (noEncontrados.length > 0) {
+        advertencias.push(
+          `Los códigos "${noEncontrados.join('", "')}" no están en el catálogo CIE-10 local (data/cie10.json) — se guardaron solo con el código, sin nombre.`
+        );
+      }
+    }
 
     if (errores.length > 0) {
       importErrors.classList.remove("hidden");
@@ -825,8 +842,10 @@ downloadReportBtn.addEventListener("click", async () => {
       filas.push({
         orden: fechaObj && !Number.isNaN(fechaObj.getTime()) ? fechaObj.getTime() : 0,
         // Las columnas clínicas no aplican a una cita (no tiene ese
-        // contenido); quedan vacías. Familiar sí aplica (una inasistencia o
-        // reprogramación también puede ser de un familiar del trabajador).
+        // contenido); quedan vacías, salvo "motivo" (motivo de la
+        // inasistencia/reprogramación, no motivo de consulta). Familiar sí
+        // aplica (una inasistencia o reprogramación también puede ser de un
+        // familiar del trabajador).
         fila: [
           "cita",
           dni,
@@ -843,7 +862,8 @@ downloadReportBtn.addEventListener("click", async () => {
           data.familiarParentesco || "",
           ESTADO_CITA_LABEL[data.estado] || data.estado || "",
           ASISTIO_CITA_LABEL[data.estado] || "",
-          "", "", "", "", "", "", "", "", "", ""
+          data.motivo || "",
+          "", "", "", "", "", "", "", "", ""
         ]
       });
     });

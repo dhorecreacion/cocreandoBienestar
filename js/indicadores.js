@@ -225,6 +225,8 @@ function calcularIndicadores(sesiones, fichas, citas, disponibilidad, mesSelecci
   const dnisTotales = new Set();
   const dnisMes = new Set();
   let atencionesMes = 0;
+  let familiaresMes = 0;
+  const familiaresPorArea = new Map(); // area del trabajador -> cantidad (mes elegido)
   const evaluadosPorMes = Array.from({ length: 12 }, () => new Set());
   const ultimaPorDni = new Map();
   const conteoAreas = new Map();
@@ -245,6 +247,12 @@ function calcularIndicadores(sesiones, fichas, citas, disponibilidad, mesSelecci
       if (fecha.getMonth() === mes) {
         atencionesMes++;
         dnisMes.add(dni);
+        if (data.esParaFamiliar) {
+          familiaresMes++;
+          // El área es la del trabajador (ficha), no del familiar — el
+          // familiar no tiene ficha propia en el sistema.
+          familiaresPorArea.set(area, (familiaresPorArea.get(area) || 0) + 1);
+        }
         if (data.aptitud && Object.prototype.hasOwnProperty.call(aptitudMes, data.aptitud)) {
           aptitudMes[data.aptitud]++;
         }
@@ -282,8 +290,16 @@ function calcularIndicadores(sesiones, fichas, citas, disponibilidad, mesSelecci
   // deja una reprogramación) no suma ni arriba ni abajo. Datos viejos con
   // estado "reprogramada" (de antes de este cambio) tampoco suman — quedan
   // como si siguieran pendientes, igual que "reservada".
+  // Motivos: histórico completo (no solo el mes elegido), igual criterio que
+  // Derivaciones/Diagnósticos — solo tienen "motivo" los eventos no_asistio
+  // y reservada-por-reprogramación (agenda.html), nunca una reserva nueva.
   const asistenciaPorMesDetalle = Array.from({ length: 12 }, () => ({ atendidas: 0, total: 0 }));
+  const conteoMotivos = new Map();
   citas.forEach((cita) => {
+    if (cita.motivo) {
+      conteoMotivos.set(cita.motivo, (conteoMotivos.get(cita.motivo) || 0) + 1);
+    }
+
     const estado = cita.estado || "reservada";
     if (estado !== "atendida" && estado !== "no_asistio") return;
     const fecha = cita.fecha ? new Date(cita.fecha + "T00:00:00") : null;
@@ -356,6 +372,8 @@ function calcularIndicadores(sesiones, fichas, citas, disponibilidad, mesSelecci
     atencionesMes: atencionesMes,
     atendidosMes: dnisMes.size,
     participacion: porcentaje(bucketMes.atendidas, bucketMes.total),
+    familiaresMes: familiaresMes,
+    familiaresPorArea: familiaresPorArea,
     capacidadMes: capacidadMes,
     utilizacion: porcentaje(atencionesMes, capacidadMes),
     casosActivos: dnisTotales.size,
@@ -369,6 +387,7 @@ function calcularIndicadores(sesiones, fichas, citas, disponibilidad, mesSelecci
     conteoDiagnosticos: conteoDiagnosticos,
     conteoDerivaciones: conteoDerivaciones,
     conteoModalidades: conteoModalidades,
+    conteoMotivos: conteoMotivos,
     diagnosticoTopPorArea: diagnosticoTopPorArea,
     aptitudMes: aptitudMes,
     edades: edades,
@@ -387,6 +406,7 @@ function renderKpis(ind) {
   setTexto("kpi-casos-activos", String(ind.casosActivos));
   setTexto("riskValue", String(ind.casosRiesgo));
   setTexto("kpi-capacidad", ind.utilizacion + "%");
+  setTexto("kpi-familiares", String(ind.familiaresMes));
 }
 
 function renderChartMensual(ind) {
@@ -700,6 +720,45 @@ function renderDerivaciones(ind) {
     });
 }
 
+// Atenciones a familiares por área (cantidad, no porcentaje): el área es la
+// del trabajador (su ficha), ya que el familiar no tiene ficha propia. La
+// barra se escala contra el área con más atenciones a familiares del mes.
+function renderFamiliaresPorArea(ind) {
+  const contenedor = document.getElementById("chart-familiares-area");
+  contenedor.innerHTML = "";
+
+  const entradas = Array.from(ind.familiaresPorArea.entries()).sort((a, b) => b[1] - a[1]);
+  if (entradas.length === 0) {
+    mensajeVacio(contenedor, "No hay atenciones a familiares en el mes elegido.");
+    return;
+  }
+
+  const maximo = Math.max(...entradas.map(([, cuenta]) => cuenta), 1);
+  entradas.forEach(([area, cuenta]) => {
+    contenedor.appendChild(crearFilaBarra(area, String(cuenta), porcentaje(cuenta, maximo), "bg-secondary"));
+  });
+}
+
+// Motivos de inasistencia/reprogramación (catálogo fijo de agenda.html):
+// histórico completo, mismo estilo que Derivaciones.
+function renderMotivos(ind) {
+  const contenedor = document.getElementById("chart-motivos");
+  contenedor.innerHTML = "";
+
+  const total = Array.from(ind.conteoMotivos.values()).reduce((a, b) => a + b, 0);
+  if (total === 0) {
+    mensajeVacio(contenedor, "Aún no hay motivos de inasistencia/reprogramación registrados.");
+    return;
+  }
+
+  Array.from(ind.conteoMotivos.entries())
+    .sort((a, b) => b[1] - a[1])
+    .forEach(([motivo, cuenta]) => {
+      const pct = porcentaje(cuenta, total);
+      contenedor.appendChild(crearFilaBarra(motivo, cuenta + " (" + pct + "%)", pct, "bg-secondary"));
+    });
+}
+
 function renderTodo(ind) {
   renderKpis(ind);
   renderChartMensual(ind);
@@ -710,6 +769,8 @@ function renderTodo(ind) {
   renderDiagnosticos(ind);
   renderDiagnosticosPorArea(ind);
   renderCasosSinSeguimiento(ind);
+  renderFamiliaresPorArea(ind);
+  renderMotivos(ind);
   renderEdadesYGenero(ind);
   renderModalidades(ind);
   renderDerivaciones(ind);
@@ -761,7 +822,7 @@ async function inicializar() {
     console.error("Error al cargar los indicadores:", err);
     [
       "chart-mensual", "chart-asistencia-mensual", "chart-areas", "chart-prioridades-legend",
-      "psychContent", "chart-diag-area", "chart-seguimiento", "chart-edades", "chart-derivaciones"
+      "psychContent", "chart-diag-area", "chart-seguimiento", "chart-edades", "chart-derivaciones", "chart-familiares-area", "chart-motivos"
     ].forEach((id) => mensajeVacio(document.getElementById(id), "No se pudieron cargar los datos."));
   }
 }

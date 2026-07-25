@@ -54,3 +54,19 @@ export const MODALIDADES = {
   virtual: { label: "Video", icon: "videocam" },
   llamada: { label: "Llamada telefónica", icon: "call" }
 };
+
+// Motivos de inasistencia/reprogramación: catálogo fijo (no editable desde
+// Configuración, a diferencia de Derivación/Acciones). Compartido por
+// agenda.js (selects de los modales "No Asistió"/"Reprogramar") e
+// importador.js (columna "motivo" de las filas tipo=cita de la plantilla).
+export const MOTIVOS_INASISTENCIA = [
+  "Motivos laborales",
+  "Motivos de salud",
+  "Motivos familiares",
+  "Motivos personales",
+  "Problemas de conectividad/comunicación",
+  "Confusión con el horario",
+  "Olvidó su cita",
+  "No contestó",
+  "Otros"
+];

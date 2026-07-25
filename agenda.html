@@ -120,8 +120,36 @@
 <p class="col-span-full text-body-md text-on-surface-variant">Elige primero una fecha.</p>
 </div>
 </div>
+<div>
+<label class="block font-label-md text-label-md text-on-surface mb-1" for="reprogramar-motivo">Motivo de la reprogramación</label>
+<select class="w-full px-3 py-2.5 bg-surface-container-lowest border border-outline-variant rounded-lg focus:outline-none focus:ring-2 focus:ring-secondary text-body-md" id="reprogramar-motivo">
+<option value="">Selecciona un motivo</option>
+</select>
+</div>
 <p class="hidden font-label-md text-label-md text-error" id="reprogramar-error"></p>
 <button class="w-full py-2.5 rounded-lg bg-primary text-on-primary font-semibold hover:opacity-90 transition-all" id="reprogramar-guardar" type="button">Guardar cambio</button>
+</div>
+</div>
+</div>
+<!-- ===================== MODAL: Marcar No Asistió ===================== -->
+<div class="hidden fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4" id="no-asistio-modal">
+<div class="bg-surface-container-lowest rounded-xl border border-outline-variant p-6 w-full max-w-sm shadow-xl">
+<div class="flex items-center justify-between mb-1">
+<h2 class="font-headline-md text-headline-md text-primary">Marcar como No Asistió</h2>
+<button class="p-1 rounded-full hover:bg-surface-container-low text-on-surface-variant" id="no-asistio-close" type="button">
+<span class="material-symbols-outlined">close</span>
+</button>
+</div>
+<p class="text-body-md text-on-surface-variant mb-4" id="no-asistio-paciente">—</p>
+<div class="space-y-4">
+<div>
+<label class="block font-label-md text-label-md text-on-surface mb-1" for="no-asistio-motivo">Motivo</label>
+<select class="w-full px-3 py-2.5 bg-surface-container-lowest border border-outline-variant rounded-lg focus:outline-none focus:ring-2 focus:ring-secondary text-body-md" id="no-asistio-motivo">
+<option value="">Selecciona un motivo</option>
+</select>
+</div>
+<p class="hidden font-label-md text-label-md text-error" id="no-asistio-error"></p>
+<button class="w-full py-2.5 rounded-lg bg-primary text-on-primary font-semibold hover:opacity-90 transition-all" id="no-asistio-guardar" type="button">Guardar</button>
 </div>
 </div>
 </div>
