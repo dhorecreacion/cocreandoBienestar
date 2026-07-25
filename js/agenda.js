@@ -170,6 +170,20 @@ function crearTarjetaCita(reserva) {
   textos.appendChild(nombreEl);
   textos.appendChild(subEl);
 
+  // La cita queda bajo el DNI del trabajador; esto avisa que la atención es
+  // en realidad para un familiar suyo (dato opcional capturado en la reserva).
+  if (data.esParaFamiliar) {
+    const familiarEl = document.createElement("p");
+    familiarEl.className = "text-label-md font-semibold text-secondary flex items-center gap-1";
+    const familiarIcon = document.createElement("span");
+    familiarIcon.className = "material-symbols-outlined text-[14px]";
+    familiarIcon.textContent = "family_restroom";
+    familiarEl.appendChild(familiarIcon);
+    const detalle = [data.familiarNombre, data.familiarParentesco].filter(Boolean).join(" — ");
+    familiarEl.appendChild(document.createTextNode("Familiar" + (detalle ? ": " + detalle : "")));
+    textos.appendChild(familiarEl);
+  }
+
   // Datos de contacto: el celular aplica a toda cita (coordinación y
   // recordatorios); el enlace solo a las de video.
   if (data.telefonoWsp) {
@@ -325,7 +339,10 @@ async function marcarNoAsistio(reserva) {
       estado: "no_asistio",
       fecha: reserva.data.fecha,
       hora: reserva.data.hora,
-      modalidad: reserva.data.modalidad
+      modalidad: reserva.data.modalidad,
+      esParaFamiliar: !!reserva.data.esParaFamiliar,
+      familiarNombre: reserva.data.familiarNombre || null,
+      familiarParentesco: reserva.data.familiarParentesco || null
     }).catch((err) => console.warn("No se pudo registrar el historial de la cita:", err));
   } catch (err) {
     console.error("Error al marcar la inasistencia:", err);
@@ -458,11 +475,20 @@ reprogramarGuardar.addEventListener("click", async () => {
 
   try {
     await updateDoc(doc(dbPsico, PACIENTES_COLLECTION, reservaEnReprogramacion.dni), cambios);
+    // El historial de citas (para estadísticas de asistencia) no tiene un
+    // estado "reprogramada" aparte: reprogramar solo mueve una cita
+    // pendiente a otra fecha, así que se registra como "reservada" de
+    // nuevo (con la fecha nueva) — no es un desenlace de asistencia, es
+    // el mismo tipo de evento que crea una reserva nueva. Esto también
+    // abre un nuevo "ciclo de cita" en el historial de atencion.html.
     registrarHistorialCita(reservaEnReprogramacion.dni, {
-      estado: "reprogramada",
+      estado: "reservada",
       fecha: fechaISO,
       hora: horaReprogramacion,
-      modalidad: reservaEnReprogramacion.data.modalidad
+      modalidad: reservaEnReprogramacion.data.modalidad,
+      esParaFamiliar: !!reservaEnReprogramacion.data.esParaFamiliar,
+      familiarNombre: reservaEnReprogramacion.data.familiarNombre || null,
+      familiarParentesco: reservaEnReprogramacion.data.familiarParentesco || null
     }).catch((err) => console.warn("No se pudo registrar el historial de la cita:", err));
     Object.assign(reservaEnReprogramacion.data, cambios);
     cerrarModalReprogramar();

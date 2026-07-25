@@ -64,6 +64,26 @@
 </div>
 </div>
 </section>
+<!-- Aviso: esta cita es para un familiar del trabajador, no para él mismo
+     (dato opcional capturado en la reserva pública) -->
+<div class="hidden items-center gap-2 bg-secondary/5 border border-secondary/30 text-secondary rounded-lg px-4 py-3 font-body-md text-body-md font-semibold" id="familiar-banner">
+<span class="material-symbols-outlined text-lg">family_restroom</span>
+<span id="familiar-banner-texto">—</span>
+</div>
+<!-- Historial de Citas (asistencia real: atendida / no asistió / reprogramada) -->
+<section class="bg-surface-container-lowest p-4 sm:p-6 rounded-xl border border-outline-variant" id="citas-historial-section">
+<button class="w-full flex items-center justify-between" id="citas-historial-toggle" type="button">
+<h3 class="font-headline-md text-headline-md text-primary flex items-center gap-2">
+<span class="material-symbols-outlined text-secondary">event_note</span>
+                    Historial de Citas
+                </h3>
+<span class="material-symbols-outlined text-on-surface-variant transition-transform" id="citas-historial-chevron">expand_more</span>
+</button>
+<div class="flex flex-wrap gap-2 mt-3" id="citas-historial-resumen">
+<p class="text-body-md text-on-surface-variant">Cargando…</p>
+</div>
+<div class="hidden mt-4 space-y-2" id="citas-historial-list"></div>
+</section>
 <!-- Historial de Sesiones (todas las sesiones guardadas para este DNI) -->
 <section class="bg-surface-container-lowest p-4 sm:p-6 rounded-xl border border-outline-variant" id="historial-section">
 <button class="w-full flex items-center justify-between" id="historial-toggle" type="button">

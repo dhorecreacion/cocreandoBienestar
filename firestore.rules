@@ -15,14 +15,16 @@ service cloud.firestore {
 
       match /historial_citas/{historialId} {
         // La reserva pública (index.html, sin login) crea el evento
-        // "reservada"; nunca se actualiza ni se borra, solo se agregan
-        // eventos nuevos (no_asistio/reprogramada/atendida vienen del
-        // psicólogo ya logueado, pero la regla de create es la misma).
+        // "reservada"; la app en vivo nunca actualiza un documento existente
+        // aquí (siempre agrega uno nuevo). "update" solo lo usa el importador
+        // de pacientes.html/js/importador.js: sus IDs son determinísticos
+        // (imp-cita-dni-fecha-n), así que reimportar el mismo Excel
+        // sobreescribe en vez de duplicar — igual que ya pasa con "sesiones".
         // "if true" en el read, igual que sesiones: este proyecto (fb-psico)
         // no tiene Auth propio, así que no hay un request.auth real aquí.
-        allow create: if request.resource.data.estado is string;
+        allow create, update: if request.resource.data.estado is string;
         allow read: if true;
-        allow update, delete: if false;
+        allow delete: if false;
       }
     }
 

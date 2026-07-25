@@ -18,7 +18,7 @@ import {
   deleteDoc,
   serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-import { dbPsico, PACIENTES_COLLECTION, CONFIGURACION_COLLECTION, registrarHistorialCita } from "./fb-psico.js";
+import { dbPsico, PACIENTES_COLLECTION, CONFIGURACION_COLLECTION, HISTORIAL_CITAS_SUBCOLLECTION, registrarHistorialCita } from "./fb-psico.js";
 
 // Catálogos editables desde configuracion.html; estos son solo el respaldo
 // por si el documento de Firestore aún no existe (primera vez).
@@ -145,6 +145,22 @@ async function fetchHistorialSesiones(dniValue) {
   });
 }
 
+// Historial de citas (reservada/no_asistio/reprogramada/atendida) de este
+// DNI: a diferencia de "Historial de Sesiones" (contenido clínico), esto es
+// el registro de asistencia real — cada evento queda para siempre, aunque
+// pacientes/{dni} se sobreescriba en cada reserva nueva.
+function citasCollection(dniValue) {
+  return collection(dbPsico, PACIENTES_COLLECTION, dniValue, HISTORIAL_CITAS_SUBCOLLECTION);
+}
+
+async function fetchHistorialCitas(dniValue) {
+  const citasQuery = query(citasCollection(dniValue), orderBy("registradoEn", "desc"));
+  const snap = await getDocs(citasQuery);
+  return snap.docs.map(function (d) {
+    return d.data();
+  });
+}
+
 function formatFechaGuardado(timestamp) {
   if (!timestamp || typeof timestamp.toDate !== "function") return "—";
   return timestamp.toDate().toLocaleString("es-PE", {
@@ -169,6 +185,16 @@ function buildHistorialItem(data) {
     ? '<span class="bg-error-container text-on-error-container text-[11px] font-bold px-2 py-1 rounded uppercase tracking-wider">Riesgo</span>'
     : "";
 
+  // "Familiar" es una etiqueta fija (segura); el nombre y parentesco vienen
+  // del formulario público sin autenticar, así que se llenan aparte con
+  // textContent (ver más abajo) y nunca se interpolan en este HTML.
+  var familiarBadge = data.esParaFamiliar
+    ? '<span class="bg-secondary-fixed text-on-secondary-fixed-variant text-[11px] font-bold px-2 py-1 rounded uppercase tracking-wider">Familiar</span>'
+    : "";
+  var familiarDetalleHtml = data.esParaFamiliar
+    ? '<p><strong>Atendido:</strong> <span data-familiar-detalle></span></p>'
+    : "";
+
   var diagnosticosTexto = (data.diagnosticos || []).map(function (d) { return d.label; }).join(", ") || "—";
   var accionesTexto = (data.accionesRealizadas || []).join(", ") || "—";
 
@@ -176,11 +202,12 @@ function buildHistorialItem(data) {
     '<button type="button" class="historial-item-toggle w-full flex items-center justify-between gap-3 p-3 hover:bg-surface-container-low transition-colors text-left">' +
       '<div class="flex items-center gap-2 flex-wrap">' +
         '<span class="font-body-md font-semibold text-primary">' + formatFechaGuardado(data.guardadoEn) + '</span>' +
-        estadoBadge + riesgoBadge +
+        estadoBadge + riesgoBadge + familiarBadge +
       "</div>" +
       '<span class="material-symbols-outlined text-on-surface-variant text-[20px]">expand_more</span>' +
     "</button>" +
     '<div class="hidden border-t border-outline-variant p-4 space-y-2 text-body-md">' +
+      familiarDetalleHtml +
       "<p><strong>Motivo:</strong> " + (data.motivoConsulta || "—") + "</p>" +
       "<p><strong>Evolución:</strong> " + (data.evolucion || "—") + "</p>" +
       "<p><strong>Frecuencia:</strong> " + (data.frecuencia || "—") + " · <strong>Prioridad:</strong> " + (data.prioridad || "—") + "</p>" +
@@ -195,6 +222,14 @@ function buildHistorialItem(data) {
         "</button>" +
       "</div>" +
     "</div>";
+
+  if (data.esParaFamiliar) {
+    var detalleEl = item.querySelector("[data-familiar-detalle]");
+    if (detalleEl) {
+      var partes = [data.familiarNombre, data.familiarParentesco].filter(Boolean).join(" — ");
+      detalleEl.textContent = partes || "Familiar (sin nombre registrado)";
+    }
+  }
 
   item.querySelector(".historial-item-toggle").addEventListener("click", function () {
     item.lastElementChild.classList.toggle("hidden");
@@ -234,6 +269,135 @@ async function refreshHistorial(dniValue) {
   }
 }
 
+var ESTADO_CITA_META = {
+  atendida: { label: "Atendida", badge: "bg-green-100 text-green-800", texto: "text-on-surface-variant" },
+  no_asistio: { label: "No Asistió", badge: "bg-error-container text-on-error-container", texto: "text-error" },
+  reprogramada: { label: "Reprogramada", badge: "bg-orange-100 text-orange-800", texto: "text-orange-700" },
+  reservada: { label: "Reservada", badge: "bg-secondary-fixed text-on-secondary-fixed-variant", texto: "text-secondary" }
+};
+
+// Resumen rápido (badges) arriba de "Historial de Citas": cuenta solo los
+// desenlaces (reservada no es un desenlace, no suma aquí).
+function renderCitasResumen(citas) {
+  var contenedor = document.getElementById("citas-historial-resumen");
+  contenedor.innerHTML = "";
+
+  if (citas.length === 0) {
+    contenedor.innerHTML = '<p class="text-body-md text-on-surface-variant">Todavía no hay citas registradas para este DNI.</p>';
+    return;
+  }
+
+  var conteo = { atendida: 0, no_asistio: 0, reprogramada: 0 };
+  citas.forEach(function (cita) {
+    if (Object.prototype.hasOwnProperty.call(conteo, cita.estado)) conteo[cita.estado]++;
+  });
+
+  ["atendida", "no_asistio", "reprogramada"].forEach(function (clave) {
+    if (conteo[clave] === 0) return;
+    var meta = ESTADO_CITA_META[clave];
+    var badge = document.createElement("span");
+    badge.className = "text-[11px] font-bold px-2 py-1 rounded uppercase tracking-wider " + meta.badge;
+    badge.textContent = conteo[clave] + " " + meta.label + (conteo[clave] > 1 && clave !== "no_asistio" ? "s" : "");
+    contenedor.appendChild(badge);
+  });
+}
+
+// Cada vez que aparece un evento "reservada" empieza un ciclo de cita nuevo;
+// los eventos siguientes (no_asistio/reprogramada/atendida) de esa misma
+// cita quedan con el mismo número, hasta la próxima "reservada". También se
+// abre un ciclo nuevo si cambia entre "propia" y "familiar" (o entre dos
+// familiares distintos) — una cita del trabajador y una de su familiar son
+// hilos distintos, aunque estén una al lado de la otra en el tiempo, así
+// que nunca deben compartir el mismo número. Se recorre en orden
+// cronológico real (registradoEn ascendente) para detectar los cortes
+// correctamente, sin importar en qué orden se vaya a mostrar después.
+function asignarCiclosDeCita(citas) {
+  var ascendente = citas.slice().sort(function (a, b) {
+    var ta = a.registradoEn && a.registradoEn.toDate ? a.registradoEn.toDate().getTime() : 0;
+    var tb = b.registradoEn && b.registradoEn.toDate ? b.registradoEn.toDate().getTime() : 0;
+    return ta - tb;
+  });
+
+  var ciclo = 0;
+  var quienAnterior = null;
+  ascendente.forEach(function (cita) {
+    // "quién" identifica el hilo: el trabajador mismo, o un familiar en
+    // particular (por nombre, ya que es lo único que los distingue).
+    var quienActual = cita.esParaFamiliar ? "familiar:" + (cita.familiarNombre || "") : "propia";
+    var cambioDeHilo = quienAnterior !== null && quienActual !== quienAnterior;
+    if (cita.estado === "reservada" || ciclo === 0 || cambioDeHilo) ciclo++;
+    cita.ciclo = ciclo;
+    quienAnterior = quienActual;
+  });
+}
+
+// Línea de tiempo detallada (colapsable): un renglón por cada evento tal
+// cual se guardó (una cita puede pasar por varios estados — reservada →
+// no_asistio → reprogramada → atendida — y cada uno es un documento
+// distinto), agrupados visualmente por ciclo de cita.
+function renderCitasHistorial(citas) {
+  var lista = document.getElementById("citas-historial-list");
+  lista.innerHTML = "";
+
+  asignarCiclosDeCita(citas);
+
+  var ultimoCiclo = null;
+  citas.forEach(function (cita, indice) {
+    var meta = ESTADO_CITA_META[cita.estado] || { label: cita.estado || "—", texto: "text-on-surface-variant" };
+    var esNuevoCiclo = indice > 0 && cita.ciclo !== ultimoCiclo;
+    ultimoCiclo = cita.ciclo;
+
+    var fila = document.createElement("div");
+    fila.className =
+      "flex items-center justify-between gap-3 p-3 bg-surface-container-low rounded-lg border border-outline-variant/30 text-body-md" +
+      (esNuevoCiclo ? " mt-4 pt-4 border-t-2 border-t-secondary/30" : "");
+
+    var izquierda = document.createElement("div");
+    izquierda.className = "flex items-center gap-2 flex-wrap";
+
+    var cicloEl = document.createElement("span");
+    cicloEl.className = "text-[10px] font-bold px-1.5 py-0.5 rounded bg-secondary/10 text-secondary uppercase tracking-wider flex-shrink-0";
+    cicloEl.textContent = "Cita " + cita.ciclo;
+    izquierda.appendChild(cicloEl);
+
+    var fecha = document.createElement("span");
+    fecha.className = "font-medium";
+    fecha.textContent = (cita.fecha || "—") + (cita.hora ? " · " + cita.hora : "");
+    izquierda.appendChild(fecha);
+
+    if (cita.esParaFamiliar) {
+      var familiarEl = document.createElement("span");
+      familiarEl.className = "text-[10px] font-bold px-1.5 py-0.5 rounded bg-secondary-fixed text-on-secondary-fixed-variant uppercase tracking-wider flex-shrink-0";
+      familiarEl.textContent = "Familiar";
+      izquierda.appendChild(familiarEl);
+    }
+
+    var estado = document.createElement("span");
+    estado.className = "font-bold " + meta.texto;
+    estado.textContent = meta.label;
+
+    fila.appendChild(izquierda);
+    fila.appendChild(estado);
+    lista.appendChild(fila);
+  });
+}
+
+// Colapsar/expandir un panel con flecha: mismo comportamiento en "Historial
+// de Sesiones" y en la línea de tiempo de "Historial de Citas" (el resumen
+// de badges de este último queda siempre visible, solo se colapsa la lista).
+function wireToggle(toggleId, listaId, chevronId) {
+  var toggle = document.getElementById(toggleId);
+  var lista = document.getElementById(listaId);
+  var chevron = document.getElementById(chevronId);
+
+  toggle.addEventListener("click", function () {
+    lista.classList.toggle("hidden");
+    chevron.textContent = lista.classList.contains("hidden") ? "expand_more" : "expand_less";
+  });
+}
+
+wireToggle("citas-historial-toggle", "citas-historial-list", "citas-historial-chevron");
+
 function renderFormFromSesion(data) {
   riskSignal.checked = !!data.riesgo;
   updateRiskGlow(riskSignal.checked);
@@ -270,11 +434,12 @@ async function loadPatientData(dni) {
   }
 
   try {
-    const [ficha, cita, borrador, historial] = await Promise.all([
+    const [ficha, cita, borrador, historial, citas] = await Promise.all([
       fetchFicha(dni),
       fetchCita(dni),
       fetchBorrador(dni),
-      fetchHistorialSesiones(dni)
+      fetchHistorialSesiones(dni),
+      fetchHistorialCitas(dni)
     ]);
 
     if (!ficha) {
@@ -286,6 +451,18 @@ async function loadPatientData(dni) {
     citaActual = cita;
     patientDatetime.textContent = cita && cita.fechaLabel && cita.hora ? `${cita.fechaLabel} — ${cita.hora}` : "—";
 
+    const familiarBanner = document.getElementById("familiar-banner");
+    if (cita && cita.esParaFamiliar) {
+      var detalleFamiliar = [cita.familiarNombre, cita.familiarParentesco].filter(Boolean).join(" — ");
+      document.getElementById("familiar-banner-texto").textContent =
+        "Esta cita es para un familiar" + (detalleFamiliar ? ": " + detalleFamiliar : "");
+      familiarBanner.classList.remove("hidden");
+      familiarBanner.classList.add("flex");
+    } else {
+      familiarBanner.classList.add("hidden");
+      familiarBanner.classList.remove("flex");
+    }
+
     // Número de la sesión que se está por registrar: las ya completadas + 1.
     const completadas = historial.filter((s) => s.estado !== "borrador").length;
     patientSession.textContent = "#" + (completadas + 1);
@@ -295,6 +472,8 @@ async function loadPatientData(dni) {
       document.getElementById("draft-indicator").classList.remove("hidden");
     }
     renderHistorial(historial);
+    renderCitasResumen(citas);
+    renderCitasHistorial(citas);
   } catch (err) {
     console.error("Error al consultar los datos del paciente:", err);
     patientName.textContent = "Error al cargar los datos del paciente";
@@ -473,14 +652,7 @@ diagnosisList.addEventListener("click", function (e) {
 });
 
 // Colapsar/expandir todo el panel de Historial de Sesiones.
-var historialToggle = document.getElementById("historial-toggle");
-var historialListContainer = document.getElementById("historial-list");
-var historialChevron = document.getElementById("historial-chevron");
-
-historialToggle.addEventListener("click", function () {
-  historialListContainer.classList.toggle("hidden");
-  historialChevron.textContent = historialListContainer.classList.contains("hidden") ? "expand_more" : "expand_less";
-});
+wireToggle("historial-toggle", "historial-list", "historial-chevron");
 
 // Pequeña animación de click en los botones de guardado.
 document.querySelectorAll("button").forEach(function (btn) {
@@ -530,6 +702,19 @@ function collectFormData() {
   };
 }
 
+// La sesión hereda si es para un familiar (y su nombre/parentesco) de la
+// cita reservada — no es un dato que se edite en este formulario.
+function datosFamiliarDeCitaActual() {
+  if (!citaActual || !citaActual.esParaFamiliar) {
+    return { esParaFamiliar: false, familiarNombre: null, familiarParentesco: null };
+  }
+  return {
+    esParaFamiliar: true,
+    familiarNombre: citaActual.familiarNombre || null,
+    familiarParentesco: citaActual.familiarParentesco || null
+  };
+}
+
 async function guardarBorrador() {
   if (!dni) {
     alert("No hay un DNI en la URL: no se puede guardar.");
@@ -544,7 +729,7 @@ async function guardarBorrador() {
     var datos = collectFormData();
     await setDoc(
       doc(sesionesCollection(dni), "borrador-actual"),
-      Object.assign({}, datos, { estado: "borrador", guardadoEn: serverTimestamp() }),
+      Object.assign({}, datos, datosFamiliarDeCitaActual(), { estado: "borrador", guardadoEn: serverTimestamp() }),
       { merge: true }
     );
     formularioSucio = false; // lo escrito ya está a salvo en el borrador
@@ -578,7 +763,7 @@ async function guardarYAgendarSiguiente() {
   try {
     await addDoc(
       sesionesCollection(dni),
-      Object.assign({}, datos, {
+      Object.assign({}, datos, datosFamiliarDeCitaActual(), {
         estado: "completada",
         revisado: false,
         // La modalidad viene de la cita reservada; alimenta el gráfico
@@ -601,7 +786,10 @@ async function guardarYAgendarSiguiente() {
         estado: "atendida",
         fecha: citaActual && citaActual.fecha ? citaActual.fecha : null,
         hora: citaActual && citaActual.hora ? citaActual.hora : null,
-        modalidad: citaActual && citaActual.modalidad ? citaActual.modalidad : null
+        modalidad: citaActual && citaActual.modalidad ? citaActual.modalidad : null,
+        esParaFamiliar: !!(citaActual && citaActual.esParaFamiliar),
+        familiarNombre: (citaActual && citaActual.familiarNombre) || null,
+        familiarParentesco: (citaActual && citaActual.familiarParentesco) || null
       }).catch((err) => console.warn("No se pudo registrar el historial de la cita:", err));
     } catch (estadoErr) {
       // La sesión ya quedó guardada; si esto falla solo queda mal el color
@@ -690,7 +878,7 @@ var editModeFecha = document.getElementById("edit-mode-fecha");
 var editModeCancel = document.getElementById("edit-mode-cancel");
 
 var sesionEnEdicionId = null;
-var sesionEnEdicionMeta = null; // { estado, modalidad } del documento original, para no perderlos al actualizar
+var sesionEnEdicionMeta = null; // { estado, modalidad, esParaFamiliar, familiarNombre, familiarParentesco } del documento original, para no perderlos al actualizar
 
 function salirModoEdicion() {
   sesionEnEdicionId = null;
@@ -709,7 +897,13 @@ function iniciarEdicionSesion(data) {
   }
 
   sesionEnEdicionId = data.id;
-  sesionEnEdicionMeta = { estado: data.estado || "completada", modalidad: data.modalidad || null };
+  sesionEnEdicionMeta = {
+    estado: data.estado || "completada",
+    modalidad: data.modalidad || null,
+    esParaFamiliar: !!data.esParaFamiliar,
+    familiarNombre: data.familiarNombre || null,
+    familiarParentesco: data.familiarParentesco || null
+  };
 
   renderFormFromSesion(data);
   document.getElementById("draft-indicator").classList.add("hidden");
@@ -750,7 +944,10 @@ async function actualizarSesion() {
       doc(sesionesCollection(dni), sesionEnEdicionId),
       Object.assign({}, datos, {
         estado: sesionEnEdicionMeta.estado,
-        modalidad: sesionEnEdicionMeta.modalidad
+        modalidad: sesionEnEdicionMeta.modalidad,
+        esParaFamiliar: sesionEnEdicionMeta.esParaFamiliar,
+        familiarNombre: sesionEnEdicionMeta.familiarNombre,
+        familiarParentesco: sesionEnEdicionMeta.familiarParentesco
       }),
       { merge: true }
     );

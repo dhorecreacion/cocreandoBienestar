@@ -3,7 +3,10 @@
 // paciente, y un solo fetch por fuente aunque el psicólogo cambie de mes):
 //   1. collectionGroup "sesiones" (fb-psico): todas las sesiones clínicas.
 //   2. collectionGroup "historial_citas" (fb-psico): el historial acumulado
-//      de eventos de cada cita (reservada/no_asistio/reprogramada/atendida).
+//      de eventos de cada cita (reservada/no_asistio/atendida — reprogramar
+//      solo mueve una cita pendiente a otra fecha, no es un desenlace de
+//      asistencia, así que no tiene su propio estado; se registra como
+//      "reservada" de nuevo).
 //   3. disponibilidad (fb-psico): plantilla semanal de bloques + intervalo,
 //      para calcular capacidad/utilización.
 //   4. fichas (firebase-config, autenticado): área, género y nacimiento,
@@ -274,19 +277,21 @@ function calcularIndicadores(sesiones, fichas, citas, disponibilidad, mesSelecci
 
   // Asistencia por mes (de historial_citas, agrupado por la fecha real de la
   // cita): base tanto de "% Participación" (mes elegido) como de la
-  // tendencia de 12 meses. Solo cuentan las citas con desenlace; "reservada"
-  // (aún pendiente) no suma ni arriba ni abajo.
-  const asistenciaPorMesDetalle = Array.from({ length: 12 }, () => ({ atendidas: 0, reprogramadas: 0, total: 0 }));
+  // tendencia de 12 meses. Solo cuentan las citas con desenlace real
+  // (atendida / no_asistio); "reservada" (aún pendiente, incluida la que
+  // deja una reprogramación) no suma ni arriba ni abajo. Datos viejos con
+  // estado "reprogramada" (de antes de este cambio) tampoco suman — quedan
+  // como si siguieran pendientes, igual que "reservada".
+  const asistenciaPorMesDetalle = Array.from({ length: 12 }, () => ({ atendidas: 0, total: 0 }));
   citas.forEach((cita) => {
     const estado = cita.estado || "reservada";
-    if (estado !== "atendida" && estado !== "no_asistio" && estado !== "reprogramada") return;
+    if (estado !== "atendida" && estado !== "no_asistio") return;
     const fecha = cita.fecha ? new Date(cita.fecha + "T00:00:00") : null;
     if (!fecha || Number.isNaN(fecha.getTime()) || fecha.getFullYear() !== anio) return;
 
     const bucket = asistenciaPorMesDetalle[fecha.getMonth()];
     bucket.total++;
     if (estado === "atendida") bucket.atendidas++;
-    else if (estado === "reprogramada") bucket.reprogramadas++;
   });
 
   // Casos: se clasifican por la ÚLTIMA sesión de cada paciente.
@@ -351,7 +356,6 @@ function calcularIndicadores(sesiones, fichas, citas, disponibilidad, mesSelecci
     atencionesMes: atencionesMes,
     atendidosMes: dnisMes.size,
     participacion: porcentaje(bucketMes.atendidas, bucketMes.total),
-    reprogramacion: porcentaje(bucketMes.reprogramadas, bucketMes.total),
     capacidadMes: capacidadMes,
     utilizacion: porcentaje(atencionesMes, capacidadMes),
     casosActivos: dnisTotales.size,
@@ -382,7 +386,6 @@ function renderKpis(ind) {
   setTexto("kpi-atendidos-mes", String(ind.atendidosMes));
   setTexto("kpi-casos-activos", String(ind.casosActivos));
   setTexto("riskValue", String(ind.casosRiesgo));
-  setTexto("kpi-reprogramacion", ind.reprogramacion + "%");
   setTexto("kpi-capacidad", ind.utilizacion + "%");
 }
 

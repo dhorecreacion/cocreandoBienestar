@@ -56,7 +56,7 @@
 </div>
 </div>
 <!-- Metric Grid -->
-<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-gutter mb-gutter">
+<div class="grid grid-cols-2 md:grid-cols-3 gap-gutter mb-gutter">
 <!-- Metric 1: Atenciones del Mes (sesiones realizadas) -->
 <div class="glass-card p-6 rounded-xl transition-all hover:-translate-y-1">
 <div class="flex justify-between items-start mb-4">
@@ -68,8 +68,9 @@
 <p class="text-on-surface-variant font-label-md">Atenciones del Mes</p>
 <h4 class="text-3xl font-bold text-primary mt-1" id="kpi-atenciones-mes">—</h4>
 </div>
-<!-- Metric 3: % Participación (% de citas con desenlace — atendida, no_asistio o
-     reprogramada — que terminaron en atendida; no cuenta las aún pendientes) -->
+<!-- Metric 3: % Participación (% de citas con desenlace real —
+     atendida o no_asistio— que terminaron en atendida; no cuenta las
+     aún pendientes, incluida una cita recién reprogramada) -->
 <div class="glass-card p-6 rounded-xl transition-all hover:-translate-y-1">
 <div class="flex justify-between items-start mb-4">
 <div class="p-2 rounded-lg bg-secondary/10 text-secondary">
@@ -114,18 +115,7 @@
 <p class="text-on-surface-variant font-label-md" id="riskLabel">Casos de Riesgo</p>
 <h4 class="text-3xl font-bold text-primary mt-1" id="riskValue">—</h4>
 </div>
-<!-- Metric 7: % Reprogramación (del mes seleccionado) -->
-<div class="glass-card p-6 rounded-xl transition-all hover:-translate-y-1">
-<div class="flex justify-between items-start mb-4">
-<div class="p-2 rounded-lg bg-secondary/10 text-secondary">
-<span class="material-symbols-outlined">event_repeat</span>
-</div>
-<span class="text-xs font-bold text-primary/40 bg-surface-container-high px-2 py-1 rounded">Del mes</span>
-</div>
-<p class="text-on-surface-variant font-label-md">% Reprogramación</p>
-<h4 class="text-3xl font-bold text-primary mt-1" id="kpi-reprogramacion">—</h4>
-</div>
-<!-- Metric 8: % Capacidad Utilizada (sesiones del mes vs. bloques disponibles) -->
+<!-- Metric 7: % Capacidad Utilizada (sesiones del mes vs. bloques disponibles) -->
 <div class="glass-card p-6 rounded-xl transition-all hover:-translate-y-1">
 <div class="flex justify-between items-start mb-4">
 <div class="p-2 rounded-lg bg-secondary/10 text-secondary">

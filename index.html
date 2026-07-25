@@ -124,6 +124,36 @@
 <input class="w-full pl-10 pr-4 py-3 bg-surface-container-lowest border border-outline-variant rounded-lg focus:outline-none focus:ring-2 focus:ring-secondary focus:border-transparent font-body-md text-body-md text-on-surface transition-shadow" id="dni" placeholder="12345678" type="text"/>
 </div>
 </div>
+<!-- La cita queda bajo el DNI del trabajador siempre; esto solo anota que
+         la atención es para un familiar suyo, no un paciente aparte. -->
+<div class="mb-6">
+<label class="flex items-center gap-3 cursor-pointer select-none">
+<input class="w-5 h-5 rounded border-outline-variant text-secondary focus:ring-secondary" id="familiar-checkbox" type="checkbox"/>
+<span class="font-body-md text-body-md text-on-surface">Es para un familiar</span>
+</label>
+<div class="hidden mt-4 space-y-4" id="familiar-fields">
+<div>
+<label class="block font-label-md text-label-md text-on-surface mb-2" for="familiar-nombre">Nombre del familiar</label>
+<input class="w-full px-4 py-3 bg-surface-container-lowest border border-outline-variant rounded-lg focus:outline-none focus:ring-2 focus:ring-secondary focus:border-transparent font-body-md text-body-md text-on-surface transition-shadow" id="familiar-nombre" placeholder="Nombre completo" type="text"/>
+</div>
+<div>
+<label class="block font-label-md text-label-md text-on-surface mb-2" for="familiar-parentesco">Parentesco</label>
+<select class="w-full px-4 py-3 bg-surface-container-lowest border border-outline-variant rounded-lg focus:outline-none focus:ring-2 focus:ring-secondary focus:border-transparent font-body-md text-body-md text-on-surface transition-shadow" id="familiar-parentesco">
+<option value="">Selecciona...</option>
+<option value="Padre">Padre</option>
+<option value="Madre">Madre</option>
+<option value="Hermano(a)">Hermano(a)</option>
+<option value="Esposa(o)">Esposa(o)</option>
+<option value="Hijo(a)">Hijo(a)</option>
+<option value="otro">Otro</option>
+</select>
+</div>
+<div class="hidden" id="familiar-parentesco-otro-wrap">
+<label class="block font-label-md text-label-md text-on-surface mb-2" for="familiar-parentesco-otro">Especifica el parentesco</label>
+<input class="w-full px-4 py-3 bg-surface-container-lowest border border-outline-variant rounded-lg focus:outline-none focus:ring-2 focus:ring-secondary focus:border-transparent font-body-md text-body-md text-on-surface transition-shadow" id="familiar-parentesco-otro" placeholder="Ej: Tío, cuñada, abuelo..." type="text"/>
+</div>
+</div>
+</div>
 <!-- Teléfono de contacto (obligatorio para toda reserva) -->
 <div class="mb-6" id="wsp-field">
 <label class="block font-label-md text-label-md text-on-surface mb-2" for="wsp-input">Tu número de celular (WhatsApp) <span class="text-error">*</span></label>
@@ -169,6 +199,10 @@
 <div class="hidden flex justify-between items-center gap-3" id="summary-extra-row">
 <span class="font-label-md text-label-md text-on-surface-variant" id="summary-extra-label">—</span>
 <span class="font-body-md text-body-md font-semibold text-primary text-right min-w-0 break-all" id="summary-extra-value">—</span>
+</div>
+<div class="hidden flex justify-between items-center gap-3" id="summary-familiar-row">
+<span class="font-label-md text-label-md text-on-surface-variant">Familiar</span>
+<span class="font-body-md text-body-md font-semibold text-primary text-right min-w-0 break-all" id="summary-familiar-value">—</span>
 </div>
 </div>
 <p class="font-body-md text-body-md text-on-surface-variant mb-2 flex items-center justify-center gap-2">

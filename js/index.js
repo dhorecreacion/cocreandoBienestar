@@ -50,6 +50,46 @@ const timeOptionsContainer = document.getElementById("time-options");
 
 const wspInput = document.getElementById("wsp-input");
 
+// La cita queda siempre bajo el DNI del trabajador; esto solo anota que la
+// atención es para un familiar suyo (nombre y parentesco son opcionales).
+const familiarCheckbox = document.getElementById("familiar-checkbox");
+const familiarFields = document.getElementById("familiar-fields");
+const familiarNombreInput = document.getElementById("familiar-nombre");
+const familiarParentescoSelect = document.getElementById("familiar-parentesco");
+const familiarParentescoOtroWrap = document.getElementById("familiar-parentesco-otro-wrap");
+const familiarParentescoOtroInput = document.getElementById("familiar-parentesco-otro");
+
+familiarCheckbox.addEventListener("change", () => {
+  familiarFields.classList.toggle("hidden", !familiarCheckbox.checked);
+});
+
+familiarParentescoSelect.addEventListener("change", () => {
+  familiarParentescoOtroWrap.classList.toggle("hidden", familiarParentescoSelect.value !== "otro");
+});
+
+// Datos del familiar tal como se guardan y se muestran en la confirmación.
+function obtenerDatosFamiliar() {
+  if (!familiarCheckbox.checked) {
+    return { esParaFamiliar: false, familiarNombre: "", familiarParentesco: "" };
+  }
+  const parentesco =
+    familiarParentescoSelect.value === "otro" ? familiarParentescoOtroInput.value.trim() : familiarParentescoSelect.value;
+  return {
+    esParaFamiliar: true,
+    familiarNombre: familiarNombreInput.value.trim(),
+    familiarParentesco: parentesco
+  };
+}
+
+function limpiarCamposFamiliar() {
+  familiarCheckbox.checked = false;
+  familiarFields.classList.add("hidden");
+  familiarNombreInput.value = "";
+  familiarParentescoSelect.value = "";
+  familiarParentescoOtroWrap.classList.add("hidden");
+  familiarParentescoOtroInput.value = "";
+}
+
 let disponibilidadMap = {};
 let intervaloMinutos = 30; // duración de cita; la configura el administrador
 let horasOcupadas = new Set();
@@ -290,6 +330,21 @@ function renderResumenModalidad(telefonoWsp) {
   }
 }
 
+// Fila "Familiar" del resumen de confirmación: solo aparece si se marcó el
+// checkbox y se llenó al menos el nombre o el parentesco.
+function renderResumenFamiliar(datosFamiliar) {
+  const familiarRow = document.getElementById("summary-familiar-row");
+  const familiarValue = document.getElementById("summary-familiar-value");
+
+  if (!datosFamiliar.esParaFamiliar || (!datosFamiliar.familiarNombre && !datosFamiliar.familiarParentesco)) {
+    familiarRow.classList.add("hidden");
+    return;
+  }
+
+  familiarValue.textContent = [datosFamiliar.familiarNombre, datosFamiliar.familiarParentesco].filter(Boolean).join(" — ");
+  familiarRow.classList.remove("hidden");
+}
+
 document.getElementById("calendar-prev-month").addEventListener("click", () => {
   calendarioMesActual = new Date(calendarioMesActual.getFullYear(), calendarioMesActual.getMonth() - 1, 1);
   renderCalendarioMes();
@@ -343,6 +398,8 @@ confirmBtn.addEventListener("click", async () => {
   confirmBtn.disabled = true;
   confirmBtn.textContent = "Registrando...";
 
+  const datosFamiliar = obtenerDatosFamiliar();
+
   try {
     await setDoc(
       doc(dbPsico, PACIENTES_COLLECTION, dni),
@@ -354,6 +411,7 @@ confirmBtn.addEventListener("click", async () => {
         modalidad: selectedModalidad,
         enlace: selectedModalidad === "virtual" ? selectedEnlace : "",
         telefonoWsp: telefonoWsp,
+        ...datosFamiliar,
         // Una nueva reserva siempre arranca el ciclo de nuevo: si la persona
         // ya había sido atendida (o no asistió), esta es otra cita.
         estado: "reservada",
@@ -367,7 +425,8 @@ confirmBtn.addEventListener("click", async () => {
         estado: "reservada",
         fecha: selectedFecha,
         hora: selectedHora,
-        modalidad: selectedModalidad
+        modalidad: selectedModalidad,
+        ...datosFamiliar
       });
     } catch (historialErr) {
       // La reserva ya quedó guardada; si esto falla solo se pierde un punto
@@ -379,9 +438,11 @@ confirmBtn.addEventListener("click", async () => {
     summaryDni.textContent = dni;
     summaryDatetime.textContent = `${selectedFechaLabel}, ${selectedHora}`;
     renderResumenModalidad(telefonoWsp);
+    renderResumenFamiliar(datosFamiliar);
 
     limpiarSeleccionHora();
     wspInput.value = "";
+    limpiarCamposFamiliar();
     renderHorasDelDiaSeleccionado();
     updateBookingSummary();
 
