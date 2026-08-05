@@ -18,7 +18,7 @@ import {
   deleteDoc,
   serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-import { dbPsico, PACIENTES_COLLECTION, CONFIGURACION_COLLECTION, HISTORIAL_CITAS_SUBCOLLECTION, registrarHistorialCita } from "./fb-psico.js";
+import { dbPsico, PACIENTES_COLLECTION, CONFIGURACION_COLLECTION, HISTORIAL_CITAS_SUBCOLLECTION, MODALIDADES, registrarHistorialCita } from "./fb-psico.js";
 import { cargarCie10 } from "./cie10.js";
 
 // Catálogos editables desde configuracion.html; estos son solo el respaldo
@@ -210,6 +210,8 @@ function buildHistorialItem(data) {
     '<div class="hidden border-t border-outline-variant p-4 space-y-2 text-body-md">' +
       familiarDetalleHtml +
       "<p><strong>Motivo:</strong> " + (data.motivoConsulta || "—") + "</p>" +
+      "<p><strong>Observaciones:</strong> " + (data.observaciones || "—") + "</p>" +
+      "<p><strong>Recomendaciones:</strong> " + (data.recomendaciones || "—") + "</p>" +
       "<p><strong>Evolución:</strong> " + (data.evolucion || "—") + "</p>" +
       "<p><strong>Frecuencia:</strong> " + (data.frecuencia || "—") + " · <strong>Prioridad:</strong> " + (data.prioridad || "—") + "</p>" +
       "<p><strong>Aptitud:</strong> " + (data.aptitud || "—") + "</p>" +
@@ -350,8 +352,11 @@ function renderCitasHistorial(citas) {
 
     var fila = document.createElement("div");
     fila.className =
-      "flex items-center justify-between gap-3 p-3 bg-surface-container-low rounded-lg border border-outline-variant/30 text-body-md" +
+      "p-3 bg-surface-container-low rounded-lg border border-outline-variant/30 text-body-md" +
       (esNuevoCiclo ? " mt-4 pt-4 border-t-2 border-t-secondary/30" : "");
+
+    var filaSuperior = document.createElement("div");
+    filaSuperior.className = "flex items-center justify-between gap-3";
 
     var izquierda = document.createElement("div");
     izquierda.className = "flex items-center gap-2 flex-wrap";
@@ -366,6 +371,17 @@ function renderCitasHistorial(citas) {
     fecha.textContent = (cita.fecha || "—") + (cita.hora ? " · " + cita.hora : "");
     izquierda.appendChild(fecha);
 
+    if (cita.modalidad && MODALIDADES[cita.modalidad]) {
+      var modalidadEl = document.createElement("span");
+      modalidadEl.className = "text-label-md text-on-surface-variant flex items-center gap-1 flex-shrink-0";
+      var modalidadIcon = document.createElement("span");
+      modalidadIcon.className = "material-symbols-outlined text-[14px]";
+      modalidadIcon.textContent = MODALIDADES[cita.modalidad].icon;
+      modalidadEl.appendChild(modalidadIcon);
+      modalidadEl.appendChild(document.createTextNode(MODALIDADES[cita.modalidad].label));
+      izquierda.appendChild(modalidadEl);
+    }
+
     if (cita.esParaFamiliar) {
       var familiarEl = document.createElement("span");
       familiarEl.className = "text-[10px] font-bold px-1.5 py-0.5 rounded bg-secondary-fixed text-on-secondary-fixed-variant uppercase tracking-wider flex-shrink-0";
@@ -374,11 +390,22 @@ function renderCitasHistorial(citas) {
     }
 
     var estado = document.createElement("span");
-    estado.className = "font-bold " + meta.texto;
+    estado.className = "font-bold flex-shrink-0 " + meta.texto;
     estado.textContent = meta.label;
 
-    fila.appendChild(izquierda);
-    fila.appendChild(estado);
+    filaSuperior.appendChild(izquierda);
+    filaSuperior.appendChild(estado);
+    fila.appendChild(filaSuperior);
+
+    // Motivo de inasistencia/reprogramación (catálogo fijo de agenda.html):
+    // solo lo tienen los eventos no_asistio y reservada-por-reprogramación.
+    if (cita.motivo) {
+      var motivoEl = document.createElement("p");
+      motivoEl.className = "text-label-md text-on-surface-variant mt-1.5";
+      motivoEl.textContent = "Motivo: " + cita.motivo;
+      fila.appendChild(motivoEl);
+    }
+
     lista.appendChild(fila);
   });
 }
@@ -406,6 +433,8 @@ function renderFormFromSesion(data) {
   if (data.frecuencia) document.getElementById("frequency-select").value = data.frecuencia;
   if (data.prioridad) document.getElementById("priority-select").value = data.prioridad;
   document.getElementById("motivo-textarea").value = data.motivoConsulta || "";
+  document.getElementById("observaciones-textarea").value = data.observaciones || "";
+  document.getElementById("recomendaciones-textarea").value = data.recomendaciones || "";
   document.getElementById("evolucion-textarea").value = data.evolucion || "";
 
   if (data.aptitud) {
@@ -700,6 +729,8 @@ function collectFormData() {
     frecuencia: document.getElementById("frequency-select").value,
     prioridad: document.getElementById("priority-select").value,
     motivoConsulta: document.getElementById("motivo-textarea").value,
+    observaciones: document.getElementById("observaciones-textarea").value,
+    recomendaciones: document.getElementById("recomendaciones-textarea").value,
     evolucion: document.getElementById("evolucion-textarea").value,
     aptitud: aptitudInput ? aptitudInput.value : null,
     derivacion: document.getElementById("derivacion-select").value,
@@ -758,8 +789,8 @@ async function guardarYAgendarSiguiente() {
   }
 
   var datos = collectFormData();
-  if (!datos.motivoConsulta.trim() && !datos.evolucion.trim()) {
-    alert("Registra al menos el motivo de consulta o la evolución antes de cerrar la sesión.");
+  if (!datos.motivoConsulta.trim() && !datos.evolucion.trim() && !datos.observaciones.trim() && !datos.recomendaciones.trim()) {
+    alert("Registra al menos el motivo de consulta, las observaciones, las recomendaciones o la evolución antes de cerrar la sesión.");
     return;
   }
 
@@ -843,6 +874,8 @@ function limpiarFormulario() {
   document.getElementById("frequency-select").selectedIndex = 0;
   document.getElementById("priority-select").value = "medium";
   document.getElementById("motivo-textarea").value = "";
+  document.getElementById("observaciones-textarea").value = "";
+  document.getElementById("recomendaciones-textarea").value = "";
   document.getElementById("evolucion-textarea").value = "";
   var aptitudMarcada = document.querySelector('input[name="aptitud"]:checked');
   if (aptitudMarcada) aptitudMarcada.checked = false;
@@ -937,8 +970,8 @@ async function actualizarSesion() {
   if (!dni || !sesionEnEdicionId) return;
 
   var datos = collectFormData();
-  if (!datos.motivoConsulta.trim() && !datos.evolucion.trim()) {
-    alert("Registra al menos el motivo de consulta o la evolución antes de actualizar.");
+  if (!datos.motivoConsulta.trim() && !datos.evolucion.trim() && !datos.observaciones.trim() && !datos.recomendaciones.trim()) {
+    alert("Registra al menos el motivo de consulta, las observaciones, las recomendaciones o la evolución antes de actualizar.");
     return;
   }
 

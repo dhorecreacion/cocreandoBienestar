@@ -47,7 +47,7 @@ const COLUMNAS = [
   "tipo", "dni", "fecha", "hora", "modalidad",
   "familiar", "familiar_nombre", "familiar_parentesco",
   "asistio", "motivo", "riesgo", "frecuencia", "prioridad",
-  "derivacion", "aptitud", "evolucion", "diagnosticos", "acciones", "resultados"
+  "derivacion", "aptitud", "observaciones", "recomendaciones", "evolucion", "diagnosticos", "acciones", "resultados"
 ];
 
 const PRIORIDADES = { baja: "low", media: "medium", alta: "high", low: "low", medium: "medium", high: "high" };
@@ -155,7 +155,7 @@ const COLUMNAS_REPORTE = [
   "tipo", "dni", "nombre", "area", "cargo", "sede", "telefono", "fecha", "hora", "modalidad",
   "familiar", "familiar_nombre", "familiar_parentesco",
   "estado", "asistio", "motivo", "riesgo", "frecuencia", "prioridad",
-  "derivacion", "aptitud", "evolucion", "diagnosticos", "acciones", "resultados"
+  "derivacion", "aptitud", "observaciones", "recomendaciones", "evolucion", "diagnosticos", "acciones", "resultados"
 ];
 const ESTADO_CITA_LABEL = { reservada: "Reservada", atendida: "Atendida", no_asistio: "No Asistió", reprogramada: "Reprogramada" };
 const ASISTIO_CITA_LABEL = { atendida: "Sí", no_asistio: "No" };
@@ -207,17 +207,17 @@ function hojaConAnchos(filas, columnas) {
 // si / no / reprogramada, incluida una cita de un familiar que no asistió y
 // dos con "motivo" (catálogo fijo de agenda.html).
 const FILAS_EJEMPLO = [
-  ["sesion", "10000001", "2026-05-13", "18:00", "virtual", "no", "", "", "", "", "no", "Semanal", "media", "", "apto", "Se brindan recomendaciones generales.", "", "", ""],
-  ["sesion", "10000002", "2026-05-13", "10:00", "llamada", "no", "", "", "", "Refiere afectación emocional por el fallecimiento de un familiar cercano.", "no", "a demanda", "media", "", "no apto", "Se brindan recomendaciones para el manejo del proceso de duelo.", "", "", ""],
-  ["sesion", "10000003", "2026-06-03", "10:00", "llamada", "no", "", "", "", "Refiere sentirse afectado emocionalmente por una pérdida reciente; primera vez que atraviesa una situación así.", "no", "Semanal", "media", "", "no apto", "Se brindan recomendaciones para el manejo del duelo; se le informa sobre grupos de apoyo voluntarios.", "", "", ""],
-  ["sesion", "10000004", "2026-05-06", "08:00", "presencial", "no", "", "", "", "Refiere síntomas físicos de ansiedad y preocupación por su salud.", "no", "a demanda", "baja", "", "apto", "Se brindan recomendaciones para el manejo de la ansiedad.", "", "", ""],
-  ["sesion", "10000005", "2026-06-23", "14:40", "llamada", "no", "", "", "", "Sesión de seguimiento; se registran avances y pendientes.", "no", "Quincenal", "media", "Neuropsicologia", "no apto", "Se revisan los acuerdos de la sesión anterior y se ajusta el plan de seguimiento.", "R45.8;F43.8", "Pruebas psicométricas aplicadas", "Se aplican pruebas complementarias."],
-  ["sesion", "10000005", "2026-07-24", "21:59", "", "no", "", "", "", "Caso de alta prioridad; requiere seguimiento inmediato.", "si", "A demanda", "alta", "Psiquiatría", "no apto", "Se registra intervención de urgencia y coordinación con derivación especializada.", "F43.1", "Pruebas psicométricas aplicadas", "Pendiente de cierre."],
-  ["sesion", "10000006", "2026-06-23", "15:00", "llamada", "no", "", "", "", "Refiere afectación emocional por el fallecimiento de un familiar.", "no", "Semanal", "baja", "Psicologia", "apto", "Se le recomienda tomarse un tiempo para procesar la pérdida junto a su familia.", "F41.2", "Recomendaciones compartidas verbalmente;Pruebas psicométricas aplicadas", "En proceso de cierre y codificación."],
-  ["sesion", "10000007", "2026-07-10", "16:00", "presencial", "si", "Ana Torres", "Esposa(o)", "", "Sesión brindada al familiar del trabajador por convenio del programa de bienestar.", "no", "A demanda", "media", "", "", "Se realiza consejería breve; se orienta sobre manejo de conflictos familiares.", "", "", ""],
-  ["cita", "10000010", "2026-05-04", "09:00", "presencial", "si", "Sofía Ramos", "Hermano(a)", "no", "Motivos de salud", "", "", "", "", "", "", "", "", ""],
-  ["cita", "10000011", "2026-06-02", "16:00", "llamada", "", "", "", "si", "", "", "", "", "", "", "", "", "", ""],
-  ["cita", "10000012", "2026-06-10", "11:00", "presencial", "", "", "", "reprogramada", "Confusión con el horario", "", "", "", "", "", "", "", "", ""]
+  ["sesion", "10000001", "2026-05-13", "18:00", "virtual", "no", "", "", "", "", "no", "Semanal", "media", "", "apto", "", "Se brindan recomendaciones generales.", "", "", "", ""],
+  ["sesion", "10000002", "2026-05-13", "10:00", "llamada", "no", "", "", "", "Refiere afectación emocional por el fallecimiento de un familiar cercano.", "no", "a demanda", "media", "", "no apto", "Paciente muestra afectación emocional visible; llora durante la sesión.", "Se brindan recomendaciones para el manejo del proceso de duelo.", "", "", "", ""],
+  ["sesion", "10000003", "2026-06-03", "10:00", "llamada", "no", "", "", "", "Refiere sentirse afectado emocionalmente por una pérdida reciente; primera vez que atraviesa una situación así.", "no", "Semanal", "media", "", "no apto", "", "Se brindan recomendaciones para el manejo del duelo; se le informa sobre grupos de apoyo voluntarios.", "", "", "", ""],
+  ["sesion", "10000004", "2026-05-06", "08:00", "presencial", "no", "", "", "", "Refiere síntomas físicos de ansiedad y preocupación por su salud.", "no", "a demanda", "baja", "", "apto", "", "Se brindan recomendaciones para el manejo de la ansiedad.", "", "", "", ""],
+  ["sesion", "10000005", "2026-06-23", "14:40", "llamada", "no", "", "", "", "Sesión de seguimiento; se registran avances y pendientes.", "no", "Quincenal", "media", "Neuropsicologia", "no apto", "Refiere mejoría en el manejo de la ansiedad; asiste puntualmente a las sesiones.", "Se recomienda continuar con las técnicas de respiración trabajadas.", "Se revisan los acuerdos de la sesión anterior y se ajusta el plan de seguimiento.", "R45.8;F43.8", "Pruebas psicométricas aplicadas", "Se aplican pruebas complementarias."],
+  ["sesion", "10000005", "2026-07-24", "21:59", "", "no", "", "", "", "Caso de alta prioridad; requiere seguimiento inmediato.", "si", "A demanda", "alta", "Psiquiatría", "no apto", "", "", "Se registra intervención de urgencia y coordinación con derivación especializada.", "F43.1", "Pruebas psicométricas aplicadas", "Pendiente de cierre."],
+  ["sesion", "10000006", "2026-06-23", "15:00", "llamada", "no", "", "", "", "Refiere afectación emocional por el fallecimiento de un familiar.", "no", "Semanal", "baja", "Psicologia", "apto", "", "Se le recomienda tomarse un tiempo para procesar la pérdida junto a su familia.", "", "F41.2", "Recomendaciones compartidas verbalmente;Pruebas psicométricas aplicadas", "En proceso de cierre y codificación."],
+  ["sesion", "10000007", "2026-07-10", "16:00", "presencial", "si", "Ana Torres", "Esposa(o)", "", "Sesión brindada al familiar del trabajador por convenio del programa de bienestar.", "no", "A demanda", "media", "", "", "", "", "Se realiza consejería breve; se orienta sobre manejo de conflictos familiares.", "", "", ""],
+  ["cita", "10000010", "2026-05-04", "09:00", "presencial", "si", "Sofía Ramos", "Hermano(a)", "no", "Motivos de salud", "", "", "", "", "", "", "", "", "", "", ""],
+  ["cita", "10000011", "2026-06-02", "16:00", "llamada", "", "", "", "si", "", "", "", "", "", "", "", "", "", "", "", ""],
+  ["cita", "10000012", "2026-06-10", "11:00", "presencial", "", "", "", "reprogramada", "Confusión con el horario", "", "", "", "", "", "", "", "", "", "", ""]
 ];
 
 // ---------- Plantilla Excel (una hoja de datos + hoja de guía) ----------
@@ -244,7 +244,9 @@ downloadTemplateBtn.addEventListener("click", async () => {
     ["prioridad", "No — solo aplica a tipo=sesion", "baja / media / alta (vacío = media)."],
     ["derivacion", "No — solo aplica a tipo=sesion", catalogos.derivaciones.join(", ") + " (vacío = No requerida). Debe ser una de estas opciones exactas: son las mismas del catálogo editable en Configuración."],
     ["aptitud", "No — solo aplica a tipo=sesion", "apto / restricciones / no_apto."],
-    ["evolucion", "No — solo aplica a tipo=sesion", "Texto libre: evolución y observaciones."],
+    ["observaciones", "No — solo aplica a tipo=sesion", "Texto libre: observaciones registradas durante la sesión."],
+    ["recomendaciones", "No — solo aplica a tipo=sesion", "Texto libre: recomendaciones brindadas al paciente."],
+    ["evolucion", "No — solo aplica a tipo=sesion", "Texto libre: evolución y respuesta del paciente a la intervención."],
     ["diagnosticos", "No — solo aplica a tipo=sesion", "Cualquier código del catálogo CIE-10, con o sin punto (F41.1 o F411), separados por ; — el nombre se completa al importar buscándolo en el catálogo local (data/cie10.json); si el código no está ahí, se avisa y queda solo el código, sin nombre. Puede quedar vacío."],
     ["acciones", "No — solo aplica a tipo=sesion", "Una o más, separadas por ; — deben ser del catálogo editable en Configuración: " + catalogos.acciones.join(", ") + "."],
     ["resultados", "No — solo aplica a tipo=sesion", "Texto libre. Ej.: BDI-II: 24 puntos."],
@@ -347,7 +349,7 @@ function claveHora(hora) {
 // de consulta.
 const COLUMNAS_CLINICAS = [
   "riesgo", "frecuencia", "prioridad", "derivacion",
-  "aptitud", "evolucion", "diagnosticos", "acciones", "resultados"
+  "aptitud", "observaciones", "recomendaciones", "evolucion", "diagnosticos", "acciones", "resultados"
 ];
 
 function advertenciaClinicaEnCita(valor, numeroFila) {
@@ -525,6 +527,8 @@ function validarFilaSesion(valor, numeroFila) {
         modalidad: MODALIDADES_ALIAS[modalidadTexto] || null,
         frecuencia: valor("frecuencia"),
         motivoConsulta: valor("motivo"),
+        observaciones: valor("observaciones"),
+        recomendaciones: valor("recomendaciones"),
         evolucion: valor("evolucion"),
         aptitud: APTITUDES[aptitudTexto] || null,
         derivacion: derivacionTexto ? derivacionesValidas[derivacionTexto] : "No requerida",
@@ -827,6 +831,8 @@ downloadReportBtn.addEventListener("click", async () => {
           data.prioridad || "",
           data.derivacion || "",
           data.aptitud || "",
+          data.observaciones || "",
+          data.recomendaciones || "",
           data.evolucion || "",
           (data.diagnosticos || []).map((d) => d.label).join("; "),
           (data.accionesRealizadas || []).join("; "),
@@ -863,7 +869,7 @@ downloadReportBtn.addEventListener("click", async () => {
           ESTADO_CITA_LABEL[data.estado] || data.estado || "",
           ASISTIO_CITA_LABEL[data.estado] || "",
           data.motivo || "",
-          "", "", "", "", "", "", "", "", ""
+          "", "", "", "", "", "", "", "", "", "", ""
         ]
       });
     });
