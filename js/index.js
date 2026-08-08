@@ -13,7 +13,7 @@ import {
   query,
   where
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-import { auth, ADMIN_EMAIL } from "./firebase-config.js";
+import { auth, ADMIN_EMAILS } from "./firebase-config.js";
 import { signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
 const dniInput = document.getElementById("dni");
@@ -296,6 +296,14 @@ function updateBookingSummary() {
   }
 }
 
+// Mensaje de contacto de la pantalla de confirmación: cambia según la
+// modalidad elegida (presencial vs. llamada/virtual, que comparten el mismo
+// texto porque en ambas el psicólogo es quien se comunica primero).
+const MENSAJE_CONTACTO_PRESENCIAL =
+  "Te esperamos en la oficina de Bienestar Social. También puedes comunicarte al número 950 307 387.";
+const MENSAJE_CONTACTO_REMOTO =
+  "Pronto se comunicarán contigo al número dejado, por llamada o mensaje. Cualquier otra duda, puedes acercarte a la oficina de Bienestar Social o comunicarte al número 950 307 387.";
+
 // Pantalla de confirmación: modalidad elegida y su dato de contacto
 // (número al que llamarán, o enlace de la videollamada).
 function renderResumenModalidad(telefonoWsp) {
@@ -303,9 +311,12 @@ function renderResumenModalidad(telefonoWsp) {
   const extraRow = document.getElementById("summary-extra-row");
   const extraLabel = document.getElementById("summary-extra-label");
   const extraValue = document.getElementById("summary-extra-value");
+  const contactoMensaje = document.getElementById("summary-contacto-mensaje");
 
   summaryModalidad.textContent = (MODALIDADES[selectedModalidad] || {}).label || "—";
   extraValue.textContent = "";
+  contactoMensaje.textContent =
+    selectedModalidad === "presencial" ? MENSAJE_CONTACTO_PRESENCIAL : MENSAJE_CONTACTO_REMOTO;
 
   if (selectedModalidad === "llamada") {
     extraLabel.textContent = "Te llamarán al";
@@ -502,9 +513,9 @@ async function submitAdminLogin() {
     return;
   }
 
-  // Solo el correo autorizado puede entrar al panel; se corta acá antes de
+  // Solo un correo autorizado puede entrar al panel; se corta acá antes de
   // gastar un intento contra Firebase con cualquier otra cuenta.
-  if (email.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) {
+  if (!ADMIN_EMAILS.has(email.toLowerCase())) {
     adminLoginError.textContent = "Correo o contraseña incorrectos.";
     adminLoginError.classList.remove("hidden");
     return;

@@ -220,7 +220,10 @@ function calcularCapacidadMes(disponibilidad, anio, mes) {
 function calcularIndicadores(sesiones, fichas, citas, disponibilidad, mesSeleccionado, umbralSeguimientoDias) {
   const ahora = new Date();
   const anio = ahora.getFullYear();
-  const mes = mesSeleccionado;
+  // "general" = todo el año en curso (los 12 meses), no un mes puntual — se
+  // usa como agregado en vez de filtrar por fecha.getMonth().
+  const esGeneral = mesSeleccionado === "general";
+  const mes = esGeneral ? null : mesSeleccionado;
 
   const dnisTotales = new Set();
   const dnisMes = new Set();
@@ -244,7 +247,7 @@ function calcularIndicadores(sesiones, fichas, citas, disponibilidad, mesSelecci
 
     if (fecha && fecha.getFullYear() === anio) {
       evaluadosPorMes[fecha.getMonth()].add(dni);
-      if (fecha.getMonth() === mes) {
+      if (esGeneral || fecha.getMonth() === mes) {
         atencionesMes++;
         dnisMes.add(dni);
         if (data.esParaFamiliar) {
@@ -256,6 +259,27 @@ function calcularIndicadores(sesiones, fichas, citas, disponibilidad, mesSelecci
         if (data.aptitud && Object.prototype.hasOwnProperty.call(aptitudMes, data.aptitud)) {
           aptitudMes[data.aptitud]++;
         }
+
+        // Área/Diagnósticos/Derivaciones/Modalidades: del período elegido
+        // (mes puntual o General = todo el año), igual criterio que el resto
+        // de KPIs de arriba — antes eran histórico completo sin importar el
+        // selector.
+        conteoAreas.set(area, (conteoAreas.get(area) || 0) + 1);
+
+        (data.diagnosticos || []).forEach((diag) => {
+          if (!diag || !diag.label) return;
+          conteoDiagnosticos.set(diag.label, (conteoDiagnosticos.get(diag.label) || 0) + 1);
+          if (!diagPorArea.has(area)) diagPorArea.set(area, new Map());
+          const porArea = diagPorArea.get(area);
+          porArea.set(diag.label, (porArea.get(diag.label) || 0) + 1);
+        });
+
+        if (data.derivacion) {
+          conteoDerivaciones.set(data.derivacion, (conteoDerivaciones.get(data.derivacion) || 0) + 1);
+        }
+
+        const modalidadKey = data.modalidad && MODALIDADES[data.modalidad] ? data.modalidad : "sin_registro";
+        conteoModalidades.set(modalidadKey, (conteoModalidades.get(modalidadKey) || 0) + 1);
       }
     }
 
@@ -264,23 +288,6 @@ function calcularIndicadores(sesiones, fichas, citas, disponibilidad, mesSelecci
     if (!previa || (fecha && (!fechaPrevia || fecha > fechaPrevia))) {
       ultimaPorDni.set(dni, data);
     }
-
-    conteoAreas.set(area, (conteoAreas.get(area) || 0) + 1);
-
-    (data.diagnosticos || []).forEach((diag) => {
-      if (!diag || !diag.label) return;
-      conteoDiagnosticos.set(diag.label, (conteoDiagnosticos.get(diag.label) || 0) + 1);
-      if (!diagPorArea.has(area)) diagPorArea.set(area, new Map());
-      const porArea = diagPorArea.get(area);
-      porArea.set(diag.label, (porArea.get(diag.label) || 0) + 1);
-    });
-
-    if (data.derivacion) {
-      conteoDerivaciones.set(data.derivacion, (conteoDerivaciones.get(data.derivacion) || 0) + 1);
-    }
-
-    const modalidadKey = data.modalidad && MODALIDADES[data.modalidad] ? data.modalidad : "sin_registro";
-    conteoModalidades.set(modalidadKey, (conteoModalidades.get(modalidadKey) || 0) + 1);
   });
 
   // Asistencia por mes (de historial_citas, agrupado por la fecha real de la
@@ -295,15 +302,28 @@ function calcularIndicadores(sesiones, fichas, citas, disponibilidad, mesSelecci
   // y reservada-por-reprogramación (agenda.html), nunca una reserva nueva.
   const asistenciaPorMesDetalle = Array.from({ length: 12 }, () => ({ atendidas: 0, total: 0 }));
   const conteoMotivos = new Map();
+  let noAsistidasMes = 0;
+  let reprogramadasMes = 0;
   citas.forEach((cita) => {
     if (cita.motivo) {
       conteoMotivos.set(cita.motivo, (conteoMotivos.get(cita.motivo) || 0) + 1);
     }
 
     const estado = cita.estado || "reservada";
-    if (estado !== "atendida" && estado !== "no_asistio") return;
     const fecha = cita.fecha ? new Date(cita.fecha + "T00:00:00") : null;
-    if (!fecha || Number.isNaN(fecha.getTime()) || fecha.getFullYear() !== anio) return;
+    const enAnio = fecha && !Number.isNaN(fecha.getTime()) && fecha.getFullYear() === anio;
+
+    // Reprogramadas: reprogramar no deja un estado propio (queda "reservada"
+    // de nuevo, ver comentario más abajo) — se distingue de una reserva
+    // nueva porque siempre trae "motivo" (agenda.html lo exige). "reprogramada"
+    // literal solo puede venir de datos viejos (de antes de este cambio).
+    if (enAnio && (esGeneral || fecha.getMonth() === mes)) {
+      if (estado === "no_asistio") noAsistidasMes++;
+      if (estado === "reprogramada" || (estado === "reservada" && cita.motivo)) reprogramadasMes++;
+    }
+
+    if (estado !== "atendida" && estado !== "no_asistio") return;
+    if (!enAnio) return;
 
     const bucket = asistenciaPorMesDetalle[fecha.getMonth()];
     bucket.total++;
@@ -363,17 +383,29 @@ function calcularIndicadores(sesiones, fichas, citas, disponibilidad, mesSelecci
     .sort((a, b) => b.cuenta - a.cuenta)
     .slice(0, 6);
 
-  const capacidadMes = calcularCapacidadMes(disponibilidad, anio, mes);
-  const bucketMes = asistenciaPorMesDetalle[mes];
+  // "General": la capacidad y la asistencia se suman en los 12 meses del año
+  // en vez de tomar un solo mes.
+  const capacidadMes = esGeneral
+    ? Array.from({ length: 12 }, (_, m) => calcularCapacidadMes(disponibilidad, anio, m)).reduce((a, b) => a + b, 0)
+    : calcularCapacidadMes(disponibilidad, anio, mes);
+  const bucketMes = esGeneral
+    ? asistenciaPorMesDetalle.reduce(
+        (acc, b) => ({ atendidas: acc.atendidas + b.atendidas, total: acc.total + b.total }),
+        { atendidas: 0, total: 0 }
+      )
+    : asistenciaPorMesDetalle[mes];
 
   return {
     anio: anio,
     mes: mes,
+    esGeneral: esGeneral,
     atencionesMes: atencionesMes,
     atendidosMes: dnisMes.size,
     participacion: porcentaje(bucketMes.atendidas, bucketMes.total),
     familiaresMes: familiaresMes,
     familiaresPorArea: familiaresPorArea,
+    noAsistidasMes: noAsistidasMes,
+    reprogramadasMes: reprogramadasMes,
     capacidadMes: capacidadMes,
     utilizacion: porcentaje(atencionesMes, capacidadMes),
     casosActivos: dnisTotales.size,
@@ -398,7 +430,7 @@ function calcularIndicadores(sesiones, fichas, citas, disponibilidad, mesSelecci
 
 // ---------- Render ----------
 function renderKpis(ind) {
-  document.getElementById("mes-selector").value = String(ind.mes);
+  document.getElementById("mes-selector").value = ind.esGeneral ? "general" : String(ind.mes);
   setTexto("periodo-anio", String(ind.anio));
   setTexto("kpi-atenciones-mes", String(ind.atencionesMes));
   setTexto("kpi-participacion", ind.participacion + "%");
@@ -407,6 +439,8 @@ function renderKpis(ind) {
   setTexto("riskValue", String(ind.casosRiesgo));
   setTexto("kpi-capacidad", ind.utilizacion + "%");
   setTexto("kpi-familiares", String(ind.familiaresMes));
+  setTexto("kpi-no-asistidas", String(ind.noAsistidasMes));
+  setTexto("kpi-reprogramadas", String(ind.reprogramadasMes));
 }
 
 function renderChartMensual(ind) {
@@ -434,8 +468,8 @@ function renderChartAreas(ind) {
   const contenedor = document.getElementById("chart-areas");
   contenedor.innerHTML = "";
 
-  if (ind.totalSesiones === 0) {
-    mensajeVacio(contenedor, "Aún no hay sesiones registradas.");
+  if (ind.atencionesMes === 0) {
+    mensajeVacio(contenedor, "Aún no hay sesiones registradas en el período elegido.");
     return;
   }
 
@@ -443,8 +477,8 @@ function renderChartAreas(ind) {
     .sort((a, b) => b[1] - a[1])
     .slice(0, 6)
     .forEach(([area, cuenta]) => {
-      const pct = porcentaje(cuenta, ind.totalSesiones);
-      contenedor.appendChild(crearFilaBarra(area, pct + "%", pct, "bg-secondary"));
+      const pct = porcentaje(cuenta, ind.atencionesMes);
+      contenedor.appendChild(crearFilaBarra(area, cuenta + " (" + pct + "%)", pct, "bg-secondary"));
     });
 }
 
@@ -555,7 +589,7 @@ function renderDiagnosticos(ind) {
 
   const totalMenciones = Array.from(ind.conteoDiagnosticos.values()).reduce((a, b) => a + b, 0);
   if (totalMenciones === 0) {
-    mensajeVacio(contenedor, "Aún no hay diagnósticos registrados en las sesiones.");
+    mensajeVacio(contenedor, "Aún no hay diagnósticos registrados en el período elegido.");
     return;
   }
 
@@ -592,7 +626,7 @@ function renderDiagnosticosPorArea(ind) {
   contenedor.innerHTML = "";
 
   if (ind.diagnosticoTopPorArea.length === 0) {
-    mensajeVacio(contenedor, "Aún no hay suficientes datos.");
+    mensajeVacio(contenedor, "Aún no hay suficientes datos en el período elegido.");
     return;
   }
 
@@ -663,7 +697,7 @@ function renderEdadesYGenero(ind) {
   const totalEdades = Object.values(ind.edades).reduce((a, b) => a + b, 0);
   Object.entries(ind.edades).forEach(([rango, cuenta]) => {
     const pct = porcentaje(cuenta, totalEdades || 1);
-    edadesEl.appendChild(crearFilaBarra(rango, pct + "%", pct, "bg-secondary"));
+    edadesEl.appendChild(crearFilaBarra(rango, cuenta + " (" + pct + "%)", pct, "bg-secondary"));
   });
 
   const coloresGenero = ["bg-secondary", "bg-tertiary-fixed-dim", "bg-surface-container-highest"];
@@ -675,7 +709,7 @@ function renderEdadesYGenero(ind) {
       const punto = document.createElement("span");
       punto.className = "w-3 h-3 rounded-full " + coloresGenero[Math.min(indice, coloresGenero.length - 1)];
       chip.appendChild(punto);
-      chip.appendChild(document.createTextNode(genero + " " + porcentaje(cuenta, ind.pacientesConFicha) + "%"));
+      chip.appendChild(document.createTextNode(genero + " " + cuenta + " (" + porcentaje(cuenta, ind.pacientesConFicha) + "%)"));
       generoEl.appendChild(chip);
     });
 }
@@ -686,7 +720,7 @@ function renderModalidades(ind) {
 
   const total = Array.from(ind.conteoModalidades.values()).reduce((a, b) => a + b, 0);
   if (total === 0) {
-    mensajeVacio(contenedor, "Aún no hay sesiones registradas.");
+    mensajeVacio(contenedor, "Aún no hay sesiones registradas en el período elegido.");
     return;
   }
 
@@ -697,7 +731,7 @@ function renderModalidades(ind) {
     .forEach(([clave, cuenta]) => {
       const etiqueta = clave === "sin_registro" ? "Sin registro (citas antiguas)" : MODALIDADES[clave].label;
       const pct = porcentaje(cuenta, total);
-      contenedor.appendChild(crearFilaBarra(etiqueta, pct + "%", pct, colores[clave] || "bg-secondary"));
+      contenedor.appendChild(crearFilaBarra(etiqueta, cuenta + " (" + pct + "%)", pct, colores[clave] || "bg-secondary"));
     });
 }
 
@@ -707,7 +741,7 @@ function renderDerivaciones(ind) {
 
   const total = Array.from(ind.conteoDerivaciones.values()).reduce((a, b) => a + b, 0);
   if (total === 0) {
-    mensajeVacio(contenedor, "Aún no hay derivaciones registradas.");
+    mensajeVacio(contenedor, "Aún no hay derivaciones registradas en el período elegido.");
     return;
   }
 
@@ -716,7 +750,7 @@ function renderDerivaciones(ind) {
     .forEach(([derivacion, cuenta]) => {
       const pct = porcentaje(cuenta, total);
       const color = derivacion === "No requerida" ? "bg-surface-container-highest" : "bg-secondary";
-      contenedor.appendChild(crearFilaBarra(derivacion, pct + "%", pct, color));
+      contenedor.appendChild(crearFilaBarra(derivacion, cuenta + " (" + pct + "%)", pct, color));
     });
 }
 
@@ -788,7 +822,7 @@ const mesSelector = document.getElementById("mes-selector");
 
 function recalcularYRenderizar() {
   if (!datosGlobales) return;
-  const mesSeleccionado = Number(mesSelector.value);
+  const mesSeleccionado = mesSelector.value === "general" ? "general" : Number(mesSelector.value);
   renderTodo(
     calcularIndicadores(
       datosGlobales.sesiones,
@@ -816,7 +850,7 @@ async function inicializar() {
     ]);
 
     datosGlobales = { sesiones, fichas, citas, disponibilidad, umbralSeguimiento };
-    mesSelector.value = String(new Date().getMonth());
+    mesSelector.value = "general";
     recalcularYRenderizar();
   } catch (err) {
     console.error("Error al cargar los indicadores:", err);

@@ -35,6 +35,7 @@
 <label class="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-outline-variant bg-white text-body-md font-semibold text-primary" for="mes-selector">
 <span class="material-symbols-outlined text-[20px]">calendar_month</span>
 <select class="bg-transparent focus:outline-none cursor-pointer" id="mes-selector">
+<option value="general" selected >General (todo el año)</option>
 <option value="0">Enero</option>
 <option value="1">Febrero</option>
 <option value="2">Marzo</option>
@@ -66,7 +67,7 @@
 </div>
 <span class="text-xs font-bold text-primary/40 bg-surface-container-high px-2 py-1 rounded">Sesiones</span>
 </div>
-<p class="text-on-surface-variant font-label-md">Atenciones del Mes</p>
+<p class="text-on-surface-variant font-label-md">Atenciones del Período</p>
 <h4 class="text-3xl font-bold text-primary mt-1" id="kpi-atenciones-mes">—</h4>
 </div>
 <!-- Metric 3: % Participación (% de citas con desenlace real —
@@ -91,7 +92,7 @@
 </div>
 <span class="text-xs font-bold text-primary/40 bg-surface-container-high px-2 py-1 rounded">Personas únicas</span>
 </div>
-<p class="text-on-surface-variant font-label-md">Atendidos del Mes</p>
+<p class="text-on-surface-variant font-label-md">Atendidos del Período</p>
 <h4 class="text-3xl font-bold text-primary mt-1" id="kpi-atendidos-mes">—</h4>
 </div>
 <!-- Metric 5: Casos Activos -->
@@ -122,22 +123,44 @@
 <div class="p-2 rounded-lg bg-secondary/10 text-secondary">
 <span class="material-symbols-outlined">event_seat</span>
 </div>
-<span class="text-xs font-bold text-primary/40 bg-surface-container-high px-2 py-1 rounded">Del mes</span>
+<span class="text-xs font-bold text-primary/40 bg-surface-container-high px-2 py-1 rounded">Del período</span>
 </div>
 <p class="text-on-surface-variant font-label-md">% Capacidad Utilizada</p>
 <h4 class="text-3xl font-bold text-primary mt-1" id="kpi-capacidad">—</h4>
 </div>
-<!-- Metric 8: Atenciones a Familiares (cantidad, sesiones del mes brindadas
-     a un familiar del trabajador, no al trabajador mismo) -->
+<!-- Metric 8: Atenciones a Familiares (cantidad, sesiones del período elegido
+     brindadas a un familiar del trabajador, no al trabajador mismo) -->
 <div class="glass-card p-6 rounded-xl transition-all hover:-translate-y-1">
 <div class="flex justify-between items-start mb-4">
 <div class="p-2 rounded-lg bg-secondary/10 text-secondary">
 <span class="material-symbols-outlined">family_restroom</span>
 </div>
-<span class="text-xs font-bold text-primary/40 bg-surface-container-high px-2 py-1 rounded">Del mes</span>
+<span class="text-xs font-bold text-primary/40 bg-surface-container-high px-2 py-1 rounded">Del período</span>
 </div>
 <p class="text-on-surface-variant font-label-md">Atenciones a Familiares</p>
 <h4 class="text-3xl font-bold text-primary mt-1" id="kpi-familiares">—</h4>
+</div>
+<!-- Metric 9: Citas No Asistidas (cantidad, del período elegido) -->
+<div class="glass-card p-6 rounded-xl transition-all hover:-translate-y-1">
+<div class="flex justify-between items-start mb-4">
+<div class="p-2 rounded-lg bg-secondary/10 text-secondary">
+<span class="material-symbols-outlined">person_off</span>
+</div>
+<span class="text-xs font-bold text-primary/40 bg-surface-container-high px-2 py-1 rounded">Del período</span>
+</div>
+<p class="text-on-surface-variant font-label-md">Citas No Asistidas</p>
+<h4 class="text-3xl font-bold text-primary mt-1" id="kpi-no-asistidas">—</h4>
+</div>
+<!-- Metric 10: Citas Reprogramadas (cantidad, del período elegido) -->
+<div class="glass-card p-6 rounded-xl transition-all hover:-translate-y-1">
+<div class="flex justify-between items-start mb-4">
+<div class="p-2 rounded-lg bg-secondary/10 text-secondary">
+<span class="material-symbols-outlined">event_repeat</span>
+</div>
+<span class="text-xs font-bold text-primary/40 bg-surface-container-high px-2 py-1 rounded">Del período</span>
+</div>
+<p class="text-on-surface-variant font-label-md">Citas Reprogramadas</p>
+<h4 class="text-3xl font-bold text-primary mt-1" id="kpi-reprogramadas">—</h4>
 </div>
 </div>
 <!-- Charts Grid -->
@@ -154,9 +177,9 @@
 <p class="text-body-md text-on-surface-variant m-auto">Cargando…</p>
 </div>
 </div>
-<!-- Atenciones por Área -->
+<!-- Atenciones por Área (período elegido) -->
 <div class="col-span-12 lg:col-span-4 glass-card p-6 sm:p-8 rounded-xl flex flex-col">
-<h5 class="font-headline-md text-headline-md text-primary mb-6">Atenciones por Área</h5>
+<h5 class="font-headline-md text-headline-md text-primary mb-6">Atenciones por Área (período elegido)</h5>
 <div class="space-y-6 flex-1" id="chart-areas">
 <p class="text-body-md text-on-surface-variant">Cargando…</p>
 </div>
@@ -178,18 +201,18 @@
 </div>
 </div>
 </div>
-<!-- Diagnósticos Más Frecuentes -->
+<!-- Diagnósticos Más Frecuentes (período elegido) -->
 <div class="col-span-12 lg:col-span-6 glass-card p-6 sm:p-8 rounded-xl">
 <div class="mb-8">
-<h5 class="font-headline-md text-headline-md text-primary">Diagnósticos Más Frecuentes</h5>
+<h5 class="font-headline-md text-headline-md text-primary">Diagnósticos Más Frecuentes (período elegido)</h5>
 </div>
 <div class="space-y-4" id="psychContent">
 <p class="text-body-md text-on-surface-variant">Cargando…</p>
 </div>
 </div>
-<!-- Modalidades de Atención (de las sesiones registradas) -->
+<!-- Modalidades de Atención (período elegido) -->
 <div class="col-span-12 lg:col-span-4 glass-card p-6 sm:p-8 rounded-xl">
-<h5 class="font-headline-md text-headline-md text-primary mb-6">Modalidades de Atención</h5>
+<h5 class="font-headline-md text-headline-md text-primary mb-6">Modalidades de Atención (período elegido)</h5>
 <div class="space-y-6" id="chart-modalidades">
 <p class="text-body-md text-on-surface-variant">Cargando…</p>
 </div>
@@ -206,9 +229,9 @@
 <p class="text-body-md text-on-surface-variant">Cargando…</p>
 </div>
 </div>
-<!-- Derivaciones -->
+<!-- Derivaciones (período elegido) -->
 <div class="col-span-12 lg:col-span-4 glass-card p-6 sm:p-8 rounded-xl">
-<h5 class="font-headline-md text-headline-md text-primary mb-6">Derivaciones</h5>
+<h5 class="font-headline-md text-headline-md text-primary mb-6">Derivaciones (período elegido)</h5>
 <div class="space-y-6" id="chart-derivaciones">
 <p class="text-body-md text-on-surface-variant">Cargando…</p>
 </div>
@@ -225,9 +248,9 @@
 <p class="text-body-md text-on-surface-variant m-auto">Cargando…</p>
 </div>
 </div>
-<!-- Aptitud Laboral (del mes elegido) -->
+<!-- Aptitud Laboral (del período elegido) -->
 <div class="col-span-12 lg:col-span-4 glass-card p-6 sm:p-8 rounded-xl">
-<h5 class="font-headline-md text-headline-md text-primary mb-8">Aptitud Laboral (mes elegido)</h5>
+<h5 class="font-headline-md text-headline-md text-primary mb-8">Aptitud Laboral (período elegido)</h5>
 <div class="flex flex-col sm:flex-row items-center gap-8 sm:gap-12">
 <div class="relative w-40 h-40 rounded-full flex-shrink-0 flex items-center justify-center" id="chart-aptitud-donut">
 <div class="w-[108px] h-[108px] rounded-full bg-surface-container-lowest flex items-center justify-center">
@@ -242,9 +265,9 @@
 </div>
 </div>
 </div>
-<!-- Diagnóstico más frecuente por Área (histórico) -->
+<!-- Diagnóstico más frecuente por Área (período elegido) -->
 <div class="col-span-12 lg:col-span-6 glass-card p-6 sm:p-8 rounded-xl">
-<h5 class="font-headline-md text-headline-md text-primary mb-6">Diagnóstico Más Frecuente por Área</h5>
+<h5 class="font-headline-md text-headline-md text-primary mb-6">Diagnóstico Más Frecuente por Área (período elegido)</h5>
 <div class="space-y-3" id="chart-diag-area">
 <p class="text-body-md text-on-surface-variant">Cargando…</p>
 </div>
@@ -259,11 +282,11 @@
 <p class="text-body-md text-on-surface-variant">Cargando…</p>
 </div>
 </div>
-<!-- Atenciones a Familiares por Área (cantidad, mes elegido) -->
+<!-- Atenciones a Familiares por Área (cantidad, período elegido) -->
 <div class="col-span-12 lg:col-span-6 glass-card p-6 sm:p-8 rounded-xl">
 <div class="flex items-center justify-between mb-6">
 <h5 class="font-headline-md text-headline-md text-primary">Atenciones a Familiares por Área</h5>
-<span class="text-xs text-on-surface-variant font-medium">Cantidad, mes elegido</span>
+<span class="text-xs text-on-surface-variant font-medium">Cantidad, período elegido</span>
 </div>
 <div class="space-y-6" id="chart-familiares-area">
 <p class="text-body-md text-on-surface-variant">Cargando…</p>
