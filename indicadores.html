@@ -18,7 +18,7 @@
 <!-- TopAppBar -->
 <header class="fixed top-0 right-0 left-0 lg:left-[240px] h-16 flex justify-between items-center pl-16 lg:pl-margin-desktop pr-margin-mobile lg:pr-margin-desktop bg-surface dark:bg-surface-container-lowest border-b border-outline-variant dark:border-outline z-40">
 <div class="flex items-center gap-4 min-w-0">
-<h2 class="hidden sm:block font-headline-md text-headline-md font-bold text-primary truncate">Tablero de Indicadores</h2>
+<h2 class="font-headline-md text-headline-md font-bold text-primary truncate">Tablero de Indicadores</h2>
 
 </div>
 
@@ -58,7 +58,7 @@
 </div>
 </div>
 <!-- Metric Grid -->
-<div class="grid grid-cols-2 md:grid-cols-3 gap-gutter mb-gutter">
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-gutter mb-gutter">
 <!-- Metric 1: Atenciones del Mes (sesiones realizadas) -->
 <div class="glass-card p-6 rounded-xl transition-all hover:-translate-y-1">
 <div class="flex justify-between items-start mb-4">
@@ -167,7 +167,7 @@
 <div class="grid grid-cols-12 gap-gutter">
 <!-- Main Chart: Evaluados por Mes -->
 <div class="col-span-12 lg:col-span-8 glass-card p-6 sm:p-8 rounded-xl">
-<div class="flex justify-between items-center mb-8">
+<div class="flex flex-wrap justify-between items-center gap-2 mb-8">
 <h5 class="font-headline-md text-headline-md text-primary">Evaluados por Mes (<span id="chart-anio">—</span>)</h5>
 <span class="flex items-center gap-1.5 text-xs text-on-surface-variant font-medium">
 <span class="w-3 h-3 rounded-full bg-secondary"></span> Personas atendidas
@@ -236,18 +236,6 @@
 <p class="text-body-md text-on-surface-variant">Cargando…</p>
 </div>
 </div>
-<!-- Tendencia de Asistencia por Mes (histórico, no solo el mes elegido) -->
-<div class="col-span-12 lg:col-span-8 glass-card p-6 sm:p-8 rounded-xl">
-<div class="flex justify-between items-center mb-8">
-<h5 class="font-headline-md text-headline-md text-primary">Tendencia de Asistencia (<span id="chart-asistencia-anio">—</span>)</h5>
-<span class="flex items-center gap-1.5 text-xs text-on-surface-variant font-medium">
-<span class="w-3 h-3 rounded-full bg-secondary"></span> % de citas atendidas
-                    </span>
-</div>
-<div class="relative h-64 w-full flex items-end justify-between gap-1 px-2" id="chart-asistencia-mensual">
-<p class="text-body-md text-on-surface-variant m-auto">Cargando…</p>
-</div>
-</div>
 <!-- Aptitud Laboral (del período elegido) -->
 <div class="col-span-12 lg:col-span-4 glass-card p-6 sm:p-8 rounded-xl">
 <h5 class="font-headline-md text-headline-md text-primary mb-8">Aptitud Laboral (período elegido)</h5>
@@ -266,7 +254,7 @@
 </div>
 </div>
 <!-- Diagnóstico más frecuente por Área (período elegido) -->
-<div class="col-span-12 lg:col-span-6 glass-card p-6 sm:p-8 rounded-xl">
+<div class="col-span-12 lg:col-span-8 glass-card p-6 sm:p-8 rounded-xl">
 <h5 class="font-headline-md text-headline-md text-primary mb-6">Diagnóstico Más Frecuente por Área (período elegido)</h5>
 <div class="space-y-3" id="chart-diag-area">
 <p class="text-body-md text-on-surface-variant">Cargando…</p>
@@ -274,7 +262,7 @@
 </div>
 <!-- Casos Sin Seguimiento (riesgo o restricción sin sesión reciente) -->
 <div class="col-span-12 lg:col-span-6 glass-card p-6 sm:p-8 rounded-xl">
-<div class="flex items-center justify-between mb-6">
+<div class="flex flex-wrap items-center justify-between gap-2 mb-6">
 <h5 class="font-headline-md text-headline-md text-primary">Casos Sin Seguimiento</h5>
 <span class="text-xs text-on-surface-variant font-medium">Riesgo/restricción, +30 días sin sesión</span>
 </div>
@@ -284,7 +272,7 @@
 </div>
 <!-- Atenciones a Familiares por Área (cantidad, período elegido) -->
 <div class="col-span-12 lg:col-span-6 glass-card p-6 sm:p-8 rounded-xl">
-<div class="flex items-center justify-between mb-6">
+<div class="flex flex-wrap items-center justify-between gap-2 mb-6">
 <h5 class="font-headline-md text-headline-md text-primary">Atenciones a Familiares por Área</h5>
 <span class="text-xs text-on-surface-variant font-medium">Cantidad, período elegido</span>
 </div>
@@ -293,8 +281,8 @@
 </div>
 </div>
 <!-- Motivos de Inasistencia/Reprogramación (histórico, no solo el mes elegido) -->
-<div class="col-span-12 lg:col-span-6 glass-card p-6 sm:p-8 rounded-xl">
-<div class="flex items-center justify-between mb-6">
+<div class="col-span-12 glass-card p-6 sm:p-8 rounded-xl">
+<div class="flex flex-wrap items-center justify-between gap-2 mb-6">
 <h5 class="font-headline-md text-headline-md text-primary">Motivos de Inasistencia/Reprogramación</h5>
 <span class="text-xs text-on-surface-variant font-medium">Histórico</span>
 </div>

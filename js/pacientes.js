@@ -1,17 +1,21 @@
 // Directorio de Pacientes (V6).
-// Cruza tres fuentes en solo 2 + ceil(N/10) consultas (nunca una por paciente):
+// Cruza cuatro fuentes en solo 3 + ceil(N/10) consultas (nunca una por paciente):
 //   1. pacientes (fb-psico): las reservas hechas desde la página pública.
 //   2. collectionGroup "sesiones" (fb-psico): TODAS las sesiones de todos los
 //      pacientes en una sola consulta, agrupadas aquí por el DNI del padre.
-//   3. fichas (firebase-config, autenticado): nombre y área, pedidos por
+//   3. casos (fb-psico): qué DNIs cerró el psicólogo a mano.
+//   4. fichas (firebase-config, autenticado): nombre y área, pedidos por
 //      lotes con where("personal.doc", "in", [...]) solo para los DNIs que
 //      realmente aparecen en el directorio.
-import { dbPsico, PACIENTES_COLLECTION } from "./fb-psico.js";
+import { dbPsico, PACIENTES_COLLECTION, CASOS_COLLECTION } from "./fb-psico.js";
 import { fetchFichasPorDnis } from "./fichas-cache.js";
 import {
   collection,
   collectionGroup,
-  getDocs
+  getDocs,
+  doc,
+  setDoc,
+  serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const searchInput = document.getElementById("search-input");
@@ -59,6 +63,17 @@ async function fetchReservas() {
   return reservas;
 }
 
+// Caso cerrado a mano (independiente de la reserva y de las sesiones): si no
+// existe el documento, el caso está abierto.
+async function fetchCasosCerrados() {
+  const snap = await getDocs(collection(dbPsico, CASOS_COLLECTION));
+  const cerrados = new Set();
+  snap.forEach((d) => {
+    if (d.data().cerrado) cerrados.add(d.id);
+  });
+  return cerrados;
+}
+
 async function fetchSesionesAgrupadas() {
   const snap = await getDocs(collectionGroup(dbPsico, "sesiones"));
   const porDni = new Map();
@@ -89,7 +104,11 @@ async function fetchSesionesAgrupadas() {
 
 // ---------- Armado de registros ----------
 async function cargarRegistros() {
-  const [reservas, sesionesPorDni] = await Promise.all([fetchReservas(), fetchSesionesAgrupadas()]);
+  const [reservas, sesionesPorDni, casosCerrados] = await Promise.all([
+    fetchReservas(),
+    fetchSesionesAgrupadas(),
+    fetchCasosCerrados()
+  ]);
 
   // Un paciente puede tener reserva sin sesiones, o sesiones sin reserva
   // vigente: el directorio muestra la unión de ambos conjuntos.
@@ -116,7 +135,9 @@ async function cargarRegistros() {
       prioridad: ultimaSesion ? ultimaSesion.prioridad || "" : "",
       fechaUltimaSesion: fechaUltimaSesion,
       proximaCita: reserva && reserva.fechaLabel && reserva.hora ? `${reserva.fechaLabel}, ${reserva.hora}` : "",
-      ultimaActividad: ultimaActividad
+      ultimaActividad: ultimaActividad,
+      cerrado: casosCerrados.has(dni),
+      fichaInactiva: !!(ficha && ficha.activo === false)
     };
   });
 }
@@ -175,6 +196,8 @@ function crearFilaPaciente(registro) {
 
   if (registro.riesgo) badges.appendChild(crearBadge("Riesgo", "bg-error-container text-on-error-container"));
   if (registro.tieneBorrador) badges.appendChild(crearBadge("Borrador", "bg-orange-100 text-orange-800"));
+  if (registro.cerrado) badges.appendChild(crearBadge("Caso cerrado", "bg-surface-container-high text-on-surface-variant"));
+  if (registro.fichaInactiva) badges.appendChild(crearBadge("Ficha inactiva", "bg-orange-100 text-orange-800"));
   badges.appendChild(
     registro.totalSesiones > 0
       ? crearBadge("En atención", "bg-green-100 text-green-800")
@@ -210,7 +233,7 @@ function crearFilaPaciente(registro) {
 
   // Acción: abrir la ficha (historial + nueva atención viven en atencion.html)
   const acciones = document.createElement("div");
-  acciones.className = "flex md:justify-end";
+  acciones.className = "flex flex-col gap-2 md:items-end";
   cuerpo.appendChild(acciones);
 
   const abrirBtn = document.createElement("button");
@@ -224,7 +247,42 @@ function crearFilaPaciente(registro) {
   });
   acciones.appendChild(abrirBtn);
 
+  const casoBtn = document.createElement("button");
+  casoBtn.type = "button";
+  casoBtn.className =
+    "w-full md:w-auto px-4 py-2 border border-outline-variant text-on-surface-variant text-label-md font-semibold rounded-lg hover:bg-surface-container-low transition-all flex items-center justify-center gap-2";
+  casoBtn.innerHTML =
+    '<span class="material-symbols-outlined text-[18px]">' + (registro.cerrado ? "restart_alt" : "task_alt") + "</span>";
+  casoBtn.appendChild(document.createTextNode(registro.cerrado ? "Reabrir caso" : "Cerrar caso"));
+  casoBtn.addEventListener("click", () => toggleCaso(registro, casoBtn));
+  acciones.appendChild(casoBtn);
+
   return card;
+}
+
+// Cierra o reabre un caso a mano (colección "casos", independiente de la
+// reserva vigente y de las sesiones) — afecta a "Casos Activos" en
+// indicadores.html. Actualiza el registro local y vuelve a pintar la fila
+// en vez de recargar todo el directorio.
+async function toggleCaso(registro, boton) {
+  const nuevoValor = !registro.cerrado;
+  const verbo = nuevoValor ? "cerrar" : "reabrir";
+  if (!window.confirm(`¿Seguro que quieres ${verbo} el caso de ${registro.nombre || "DNI " + registro.dni}?`)) return;
+
+  boton.disabled = true;
+  try {
+    await setDoc(
+      doc(dbPsico, CASOS_COLLECTION, registro.dni),
+      { cerrado: nuevoValor, actualizadoEn: serverTimestamp() },
+      { merge: true }
+    );
+    registro.cerrado = nuevoValor;
+    renderLista();
+  } catch (err) {
+    console.error("Error al actualizar el estado del caso:", err);
+    alert("No se pudo guardar el cambio.");
+    boton.disabled = false;
+  }
 }
 
 function renderLista() {

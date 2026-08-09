@@ -18,7 +18,7 @@ import {
   deleteDoc,
   serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-import { dbPsico, PACIENTES_COLLECTION, CONFIGURACION_COLLECTION, HISTORIAL_CITAS_SUBCOLLECTION, MODALIDADES, registrarHistorialCita } from "./fb-psico.js";
+import { dbPsico, PACIENTES_COLLECTION, CONFIGURACION_COLLECTION, HISTORIAL_CITAS_SUBCOLLECTION, CASOS_COLLECTION, MODALIDADES, registrarHistorialCita } from "./fb-psico.js";
 import { cargarCie10 } from "./cie10.js";
 
 // Catálogos editables desde configuracion.html; estos son solo el respaldo
@@ -86,6 +86,40 @@ const patientDatetime = document.getElementById("patient-datetime");
 
 // Cita vigente del paciente (para copiar su modalidad a la sesión guardada).
 let citaActual = null;
+let casoCerrado = false;
+
+const toggleCasoBtn = document.getElementById("toggle-caso-btn");
+const toggleCasoIcon = document.getElementById("toggle-caso-icon");
+const toggleCasoTexto = document.getElementById("toggle-caso-texto");
+
+function renderToggleCaso() {
+  toggleCasoIcon.textContent = casoCerrado ? "restart_alt" : "task_alt";
+  toggleCasoTexto.textContent = casoCerrado ? "Reabrir caso" : "Cerrar caso";
+}
+
+toggleCasoBtn.addEventListener("click", async () => {
+  if (!dni) return;
+
+  const nuevoValor = !casoCerrado;
+  const verbo = nuevoValor ? "cerrar" : "reabrir";
+  if (!window.confirm(`¿Seguro que quieres ${verbo} este caso?`)) return;
+
+  toggleCasoBtn.disabled = true;
+  try {
+    await setDoc(
+      doc(dbPsico, CASOS_COLLECTION, dni),
+      { cerrado: nuevoValor, actualizadoEn: serverTimestamp() },
+      { merge: true }
+    );
+    casoCerrado = nuevoValor;
+    renderToggleCaso();
+  } catch (err) {
+    console.error("Error al actualizar el estado del caso:", err);
+    alert("No se pudo guardar el cambio.");
+  } finally {
+    toggleCasoBtn.disabled = false;
+  }
+});
 
 function getInitials(fullName) {
   return fullName
@@ -126,6 +160,13 @@ function renderFichaSocial(ficha) {
 async function fetchCita(dni) {
   const snap = await getDoc(doc(dbPsico, PACIENTES_COLLECTION, dni));
   return snap.exists() ? snap.data() : null;
+}
+
+// Caso cerrado a mano (colección "casos", independiente de la reserva y de
+// las sesiones) — si no existe el documento, el caso está abierto.
+async function fetchCasoCerrado(dni) {
+  const snap = await getDoc(doc(dbPsico, CASOS_COLLECTION, dni));
+  return snap.exists() ? !!snap.data().cerrado : false;
 }
 
 // Recupera SOLO el borrador a medio guardar (si existe). Las sesiones ya
@@ -464,13 +505,17 @@ async function loadPatientData(dni) {
   }
 
   try {
-    const [ficha, cita, borrador, historial, citas] = await Promise.all([
+    const [ficha, cita, borrador, historial, citas, cerrado] = await Promise.all([
       fetchFicha(dni),
       fetchCita(dni),
       fetchBorrador(dni),
       fetchHistorialSesiones(dni),
-      fetchHistorialCitas(dni)
+      fetchHistorialCitas(dni),
+      fetchCasoCerrado(dni)
     ]);
+
+    casoCerrado = cerrado;
+    renderToggleCaso();
 
     if (!ficha) {
       patientName.textContent = "No se encontró una ficha social para este DNI";

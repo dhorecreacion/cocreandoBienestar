@@ -13,15 +13,18 @@
 //      pedidos por lotes solo para los DNIs atendidos.
 //   5. configuracion/general (fb-psico): umbral de días para "Casos Sin
 //      Seguimiento", editable en configuracion.html.
+//   6. casos (fb-psico): qué DNIs cerró el psicólogo a mano (pacientes.html /
+//      atencion.html) — junto con la ficha inactiva, decide "Casos Activos".
 // El selector de mes NO vuelve a consultar Firestore: los datos crudos se
 // piden una sola vez y cada cambio de mes solo recalcula en el cliente.
 // La vista de RRHH (V10) se retiró de aquí (era un toggle en la misma
 // pantalla); si se retoma, debe vivir en su propia página de solo lectura.
-import { dbPsico, MODALIDADES, DISPONIBILIDAD_COLLECTION, DIAS_SEMANA, CONFIGURACION_COLLECTION } from "./fb-psico.js";
+import { dbPsico, PACIENTES_COLLECTION, MODALIDADES, DISPONIBILIDAD_COLLECTION, DIAS_SEMANA, CONFIGURACION_COLLECTION, CASOS_COLLECTION } from "./fb-psico.js";
 import { auth } from "./firebase-config.js";
 import { fetchFichasPorDnis } from "./fichas-cache.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
+  collection,
   collectionGroup,
   getDocs,
   doc,
@@ -31,6 +34,7 @@ import {
 const MESES_CORTOS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 const CLAVE_DIA_POR_GETDAY = ["domingo", "lunes", "martes", "miercoles", "jueves", "viernes", "sabado"];
 const UMBRAL_SEGUIMIENTO_DEFAULT = 30; // respaldo si configuracion/general aún no existe
+const UMBRAL_CASO_ACTIVO_DEFAULT = 30; // ídem, para "Casos Activos"
 
 const PRIORIDAD_META = {
   high: { label: "Alta", color: "#ba1a1a" },
@@ -103,8 +107,7 @@ function mensajeVacio(contenedor, texto) {
   contenedor.appendChild(p);
 }
 
-// Barra vertical (columna) para gráficos de 12 meses, reutilizada por
-// "Evaluados por Mes" y "Tendencia de Asistencia".
+// Barra vertical (columna) para el gráfico "Evaluados por Mes" (12 meses).
 function crearColumnaMes(mesIdx, valor, maximo, esMesSeleccionado, sufijo) {
   const columna = document.createElement("div");
   columna.className = "flex flex-col items-center flex-1 h-full justify-end group min-w-0";
@@ -115,10 +118,11 @@ function crearColumnaMes(mesIdx, valor, maximo, esMesSeleccionado, sufijo) {
     (esMesSeleccionado ? "bg-secondary shadow-md" : "bg-secondary/10 group-hover:bg-secondary/20");
   barra.style.height = valor > 0 ? Math.max(4, (valor / maximo) * 100) + "%" : "2px";
 
+  // Antes solo se veía al pasar el mouse (opacity-0 + group-hover); ahora
+  // queda siempre visible arriba de la barra.
   const tooltip = document.createElement("div");
   tooltip.className =
-    "absolute -top-8 left-1/2 -translate-x-1/2 bg-primary text-white text-[10px] px-2 py-1 rounded transition-opacity " +
-    (esMesSeleccionado ? "" : "opacity-0 group-hover:opacity-100");
+    "absolute -top-6 left-1/2 -translate-x-1/2 bg-primary text-white text-[10px] px-2 py-1 rounded whitespace-nowrap";
   tooltip.textContent = valor + (sufijo || "");
   barra.appendChild(tooltip);
 
@@ -185,6 +189,22 @@ async function fetchUmbralSeguimiento() {
   }
 }
 
+// DNIs con el caso cerrado a mano (pacientes.html / atencion.html). Un
+// documento inexistente = caso abierto; solo importa cuando existe y
+// cerrado === true.
+async function fetchCasosCerrados() {
+  const cerrados = new Set();
+  try {
+    const snap = await getDocs(collection(dbPsico, CASOS_COLLECTION));
+    snap.forEach((d) => {
+      if (d.data().cerrado) cerrados.add(d.id);
+    });
+  } catch (err) {
+    console.warn("No se pudo cargar el estado de casos cerrados:", err);
+  }
+  return cerrados;
+}
+
 // ---------- Capacidad / utilización ----------
 // Cuenta los turnos reservables (excluye bloques apagados y "emergencia",
 // que solo bloquea agenda y nunca es una cita reservable) de un día.
@@ -216,8 +236,19 @@ function calcularCapacidadMes(disponibilidad, anio, mes) {
   }, 0);
 }
 
+// Mismo criterio que "Casos Activos": un caso deja de contar en las
+// indicadores de "estado actual" (Casos de Riesgo, Casos Sin Seguimiento,
+// Aptitud Laboral) si el psicólogo lo cerró a mano o si la ficha de personal
+// ya no está activa (ej. cesado). Sin ficha encontrada no se descarta.
+function esCasoActivo(dni, fichas, casosCerrados) {
+  if (casosCerrados && casosCerrados.has(dni)) return false;
+  const ficha = fichas.get(dni);
+  if (ficha && ficha.activo === false) return false;
+  return true;
+}
+
 // ---------- Cálculo ----------
-function calcularIndicadores(sesiones, fichas, citas, disponibilidad, mesSeleccionado, umbralSeguimientoDias) {
+function calcularIndicadores(sesiones, fichas, citas, disponibilidad, mesSeleccionado, umbralSeguimientoDias, casosCerrados) {
   const ahora = new Date();
   const anio = ahora.getFullYear();
   // "general" = todo el año en curso (los 12 meses), no un mes puntual — se
@@ -256,7 +287,12 @@ function calcularIndicadores(sesiones, fichas, citas, disponibilidad, mesSelecci
           // familiar no tiene ficha propia en el sistema.
           familiaresPorArea.set(area, (familiaresPorArea.get(area) || 0) + 1);
         }
-        if (data.aptitud && Object.prototype.hasOwnProperty.call(aptitudMes, data.aptitud)) {
+        // Aptitud Laboral: solo casos activos (no cerrados, ficha activa).
+        if (
+          data.aptitud &&
+          Object.prototype.hasOwnProperty.call(aptitudMes, data.aptitud) &&
+          esCasoActivo(dni, fichas, casosCerrados)
+        ) {
           aptitudMes[data.aptitud]++;
         }
 
@@ -291,8 +327,8 @@ function calcularIndicadores(sesiones, fichas, citas, disponibilidad, mesSelecci
   });
 
   // Asistencia por mes (de historial_citas, agrupado por la fecha real de la
-  // cita): base tanto de "% Participación" (mes elegido) como de la
-  // tendencia de 12 meses. Solo cuentan las citas con desenlace real
+  // cita): base de "% Participación" (mes elegido, o los 12 meses sumados si
+  // es "General"). Solo cuentan las citas con desenlace real
   // (atendida / no_asistio); "reservada" (aún pendiente, incluida la que
   // deja una reprogramación) no suma ni arriba ni abajo. Datos viejos con
   // estado "reprogramada" (de antes de este cambio) tampoco suman — quedan
@@ -330,14 +366,23 @@ function calcularIndicadores(sesiones, fichas, citas, disponibilidad, mesSelecci
     if (estado === "atendida") bucket.atendidas++;
   });
 
-  // Casos: se clasifican por la ÚLTIMA sesión de cada paciente.
+  // Casos: se clasifican por la ÚLTIMA sesión de cada paciente. "Casos de
+  // Riesgo" y "Casos Sin Seguimiento" solo cuentan casos activos (no
+  // cerrados a mano, ficha de personal activa) — un caso cerrado ya no
+  // necesita que se le siga avisando al psicólogo. "Distribución de
+  // Prioridades" NO se filtra: se deja histórico completo a propósito.
   let casosRiesgo = 0;
   const conteoPrioridades = new Map();
   const casosSinSeguimiento = [];
   ultimaPorDni.forEach((ultima, dni) => {
-    if (ultima.riesgo) casosRiesgo++;
+    const activo = esCasoActivo(dni, fichas, casosCerrados);
+
+    if (ultima.riesgo && activo) casosRiesgo++;
+
     const prioridad = ultima.prioridad || "medium";
     conteoPrioridades.set(prioridad, (conteoPrioridades.get(prioridad) || 0) + 1);
+
+    if (!activo) return;
 
     // Casos que requieren seguimiento (riesgo o aptitud restringida) sin una
     // sesión nueva hace más de umbralSeguimientoDias (configuracion.html).
@@ -383,6 +428,12 @@ function calcularIndicadores(sesiones, fichas, citas, disponibilidad, mesSelecci
     .sort((a, b) => b.cuenta - a.cuenta)
     .slice(0, 6);
 
+  // Casos Activos: DNIs con al menos una sesión que pasan esCasoActivo().
+  let casosActivos = 0;
+  dnisTotales.forEach((dni) => {
+    if (esCasoActivo(dni, fichas, casosCerrados)) casosActivos++;
+  });
+
   // "General": la capacidad y la asistencia se suman en los 12 meses del año
   // en vez de tomar un solo mes.
   const capacidadMes = esGeneral
@@ -408,11 +459,10 @@ function calcularIndicadores(sesiones, fichas, citas, disponibilidad, mesSelecci
     reprogramadasMes: reprogramadasMes,
     capacidadMes: capacidadMes,
     utilizacion: porcentaje(atencionesMes, capacidadMes),
-    casosActivos: dnisTotales.size,
+    casosActivos: casosActivos,
     casosRiesgo: casosRiesgo,
     casosSinSeguimiento: casosSinSeguimiento,
     evaluadosPorMes: evaluadosPorMes.map((set) => set.size),
-    asistenciaPorMes: asistenciaPorMesDetalle.map((b) => porcentaje(b.atendidas, b.total)),
     totalSesiones: sesiones.length,
     conteoAreas: conteoAreas,
     conteoPrioridades: conteoPrioridades,
@@ -451,16 +501,6 @@ function renderChartMensual(ind) {
   const maximo = Math.max(...ind.evaluadosPorMes, 1);
   ind.evaluadosPorMes.forEach((valor, mesIdx) => {
     contenedor.appendChild(crearColumnaMes(mesIdx, valor, maximo, mesIdx === ind.mes, ""));
-  });
-}
-
-function renderChartAsistenciaMensual(ind) {
-  const contenedor = document.getElementById("chart-asistencia-mensual");
-  setTexto("chart-asistencia-anio", String(ind.anio));
-  contenedor.innerHTML = "";
-
-  ind.asistenciaPorMes.forEach((valor, mesIdx) => {
-    contenedor.appendChild(crearColumnaMes(mesIdx, valor, 100, mesIdx === ind.mes, "%"));
   });
 }
 
@@ -796,7 +836,6 @@ function renderMotivos(ind) {
 function renderTodo(ind) {
   renderKpis(ind);
   renderChartMensual(ind);
-  renderChartAsistenciaMensual(ind);
   renderChartAreas(ind);
   renderChartPrioridades(ind);
   renderAptitudMes(ind);
@@ -830,7 +869,8 @@ function recalcularYRenderizar() {
       datosGlobales.citas,
       datosGlobales.disponibilidad,
       mesSeleccionado,
-      datosGlobales.umbralSeguimiento
+      datosGlobales.umbralSeguimiento,
+      datosGlobales.casosCerrados
     )
   );
 }
@@ -842,20 +882,21 @@ async function inicializar() {
     const sesiones = await fetchSesiones();
     const dnis = Array.from(new Set(sesiones.map((s) => s.dni)));
 
-    const [fichas, citas, disponibilidad, umbralSeguimiento] = await Promise.all([
+    const [fichas, citas, disponibilidad, umbralSeguimiento, casosCerrados] = await Promise.all([
       dnis.length ? fetchFichasPorDnis(dnis) : Promise.resolve(new Map()),
       fetchCitas(),
       fetchDisponibilidadCompleta(),
-      fetchUmbralSeguimiento()
+      fetchUmbralSeguimiento(),
+      fetchCasosCerrados()
     ]);
 
-    datosGlobales = { sesiones, fichas, citas, disponibilidad, umbralSeguimiento };
+    datosGlobales = { sesiones, fichas, citas, disponibilidad, umbralSeguimiento, casosCerrados };
     mesSelector.value = "general";
     recalcularYRenderizar();
   } catch (err) {
     console.error("Error al cargar los indicadores:", err);
     [
-      "chart-mensual", "chart-asistencia-mensual", "chart-areas", "chart-prioridades-legend",
+      "chart-mensual", "chart-areas", "chart-prioridades-legend",
       "psychContent", "chart-diag-area", "chart-seguimiento", "chart-edades", "chart-derivaciones", "chart-familiares-area", "chart-motivos"
     ].forEach((id) => mensajeVacio(document.getElementById(id), "No se pudieron cargar los datos."));
   }

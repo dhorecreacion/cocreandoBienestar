@@ -43,6 +43,13 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    // Casos cerrados/reabiertos a mano (pacientes.html / atencion.html), para
+    // "Casos Activos" en indicadores.html. Mismo criterio "if true" que el
+    // resto: este proyecto (fb-psico) no tiene Auth propio.
+    match /casos/{dni} {
+      allow read, write: if true;
+    }
+
     // Ajustes de configuracion.html: umbral de seguimiento (doc "general")
     // y catálogos de derivación/acciones (doc "catalogos"). Los lee
     // atencion.html (sin login todavía en el momento de reservar), por eso

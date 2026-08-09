@@ -33,7 +33,10 @@ function guardarCache(cache) {
   }
 }
 
-// Devuelve Map dni -> { nombre, area, cargo, sede, genero, nacimiento }.
+// Devuelve Map dni -> { nombre, area, cargo, sede, genero, nacimiento, activo }.
+// "activo" sale de meta.activo (ficha_social): indica si el trabajador sigue
+// habilitado o no; si el documento no trae ese campo, se asume activo (true)
+// para no descartar por error fichas viejas sin ese dato.
 // Los DNIs sin ficha también se recuerdan (como null) para no volver a
 // consultarlos en cada carga.
 export async function fetchFichasPorDnis(dnis) {
@@ -67,6 +70,7 @@ export async function fetchFichasPorDnis(dnis) {
         const data = d.data();
         const personal = data.personal || {};
         const laboral = data.laboral || {};
+        const meta = data.meta || {};
         if (!personal.doc) return;
         encontrados.set(personal.doc, {
           nombre: [personal.nombres, personal.apellidos].filter(Boolean).join(" "),
@@ -74,7 +78,8 @@ export async function fetchFichasPorDnis(dnis) {
           cargo: laboral.cargo || "",
           sede: laboral.sede || "",
           genero: personal.genero || "",
-          nacimiento: personal.nacimiento || ""
+          nacimiento: personal.nacimiento || "",
+          activo: typeof meta.activo === "boolean" ? meta.activo : true
         });
       });
     });

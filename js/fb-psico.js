@@ -29,6 +29,12 @@ export const HISTORIAL_CITAS_SUBCOLLECTION = "historial_citas";
 // configuracion/general (umbralSeguimientoDias) y configuracion/catalogos
 // (derivaciones, acciones) — ver js/configuracion.js.
 export const CONFIGURACION_COLLECTION = "configuracion";
+// Estado de "caso" por DNI (cerrado manualmente por el psicólogo, ej. el
+// trabajador ya no necesita seguimiento) — independiente de pacientes/{dni}
+// (que es la reserva vigente y se sobreescribe en cada cita nueva). Si no
+// existe el documento, el caso se considera abierto. Usado por pacientes.js,
+// atencion.js e indicadores.js (para "Casos Activos").
+export const CASOS_COLLECTION = "casos";
 export const DIAS_SEMANA = ["lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo"];
 
 // Registra un evento inmutable del ciclo de vida de una cita (reservada,

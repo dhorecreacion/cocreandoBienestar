@@ -11,7 +11,7 @@ import { signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-aut
 
 var NAV_ITEMS = [
   { key: "agenda", label: "Agenda del día", href: "agenda.html", icon: "calendar_today" },
-  { key: "pacientes", label: "Pacientes", href: "pacientes.html", icon: "groups" },
+  { key: "pacientes", label: "Consultantes", href: "pacientes.html", icon: "groups" },
   { key: "disponibilidad", label: "Mi Disponibilidad", href: "disponibilidad.html", icon: "event_available" },
   { key: "indicadores", label: "Indicadores", href: "indicadores.html", icon: "analytics" },
   { key: "configuracion", label: "Configuración", href: "configuracion.html", icon: "settings" }
