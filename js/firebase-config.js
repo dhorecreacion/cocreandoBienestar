@@ -29,7 +29,7 @@
     // = agregar su correo aquí (en minúsculas); la cuenta debe existir ya
     // en el proyecto de Firebase Authentication.
     export const ADMIN_EMAILS = new Set([
-      "pbernuy@mibsac.com" , "bienestarsocial@mibsac.com"
+      "pbernuy@mibsac.com" 
     ]);
 
     export { app, auth, db, rtdb };
