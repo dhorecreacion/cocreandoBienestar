@@ -32,6 +32,10 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const MESES_CORTOS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+const MESES_LARGOS = [
+  "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+  "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
+];
 const CLAVE_DIA_POR_GETDAY = ["domingo", "lunes", "martes", "miercoles", "jueves", "viernes", "sabado"];
 const UMBRAL_SEGUIMIENTO_DEFAULT = 30; // respaldo si configuracion/general aún no existe
 const UMBRAL_CASO_ACTIVO_DEFAULT = 30; // ídem, para "Casos Activos"
@@ -852,6 +856,64 @@ function renderTodo(ind) {
 // Exportar: usa la impresión del navegador (permite guardar como PDF el
 // tablero tal como se ve), hasta que exista un generador de reporte formal.
 document.getElementById("export-btn").addEventListener("click", () => window.print());
+
+// ---------- Reporte Eje Mental (Excel, plantilla EM_1/EM_2/EM_3) ----------
+// EM_1: una fila por mes del año en curso, con datos reales. EM_2 y EM_3
+// quedan solo con su encabezado (se usan para otra cosa, fuera de este
+// tablero) — mismo archivo/estructura que la plantilla acordada con el
+// psicólogo (data/ex.xlsx).
+function construirFilasEM1() {
+  const anio = new Date().getFullYear();
+  const sesionesPorMes = Array(12).fill(0);
+  const citasPorMes = Array(12).fill(0);
+
+  (datosGlobales ? datosGlobales.sesiones : []).forEach(({ data }) => {
+    const fecha = timestampToDate(data.guardadoEn);
+    if (fecha && fecha.getFullYear() === anio) sesionesPorMes[fecha.getMonth()]++;
+  });
+
+  (datosGlobales ? datosGlobales.citas : []).forEach((cita) => {
+    const fecha = cita.fecha ? new Date(cita.fecha + "T00:00:00") : null;
+    if (fecha && !Number.isNaN(fecha.getTime()) && fecha.getFullYear() === anio) citasPorMes[fecha.getMonth()]++;
+  });
+
+  return MESES_LARGOS.map((nombreMes, i) => {
+    // "Casos Atendidos" = casos psicológicos atendidos ese mes (sesiones
+    // clínicas reales guardadas). "Citas_Sesiones" = sesiones + citas de ese
+    // mes (todo el volumen de solicitudes: agendadas, atendidas, no
+    // asistidas, reprogramadas). Indicador = Casos Atendidos ÷ Citas_Sesiones,
+    // en decimal (0-1), no como porcentaje con "%".
+    const casosAtendidos = sesionesPorMes[i];
+    const citasSesiones = sesionesPorMes[i] + citasPorMes[i];
+    const indicador = citasSesiones > 0 ? Math.round((casosAtendidos / citasSesiones) * 100) / 100 : 0;
+    return [nombreMes, casosAtendidos, citasSesiones, indicador];
+  });
+}
+
+document.getElementById("export-eje-mental-btn").addEventListener("click", () => {
+  if (typeof XLSX === "undefined") {
+    alert("No se pudo cargar el componente de Excel. Revisa tu conexión a internet y recarga la página.");
+    return;
+  }
+
+  const libro = XLSX.utils.book_new();
+
+  const hojaEM1 = XLSX.utils.aoa_to_sheet([
+    ["Mes", "Casos Atendidos", "Citas_Sesiones", "Indicador"],
+    ...construirFilasEM1()
+  ]);
+  XLSX.utils.book_append_sheet(libro, hojaEM1, "EM_1");
+
+  // EM_2 y EM_3: solo encabezado, sin filas — se llenan para otra cosa.
+  const hojaEM2 = XLSX.utils.aoa_to_sheet([["NombreCampaña", "Tipo", "Numerador", "Total", "Indicador"]]);
+  XLSX.utils.book_append_sheet(libro, hojaEM2, "EM_2");
+
+  const hojaEM3 = XLSX.utils.aoa_to_sheet([["porcentajeEncuesta"]]);
+  XLSX.utils.book_append_sheet(libro, hojaEM3, "EM_3");
+
+  const hoy = new Date().toISOString().slice(0, 10);
+  XLSX.writeFile(libro, `reporte-eje-mental-${hoy}.xlsx`);
+});
 
 // ---------- Inicio (tras confirmar sesión, para que fichas no rebote) ----------
 // Los datos crudos se guardan aquí; cambiar el mes solo recalcula, sin volver
